@@ -5,9 +5,11 @@
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; }
-        #msg { position: fixed; top: 10px; width: 100%; text-align: center; z-index: 1000; color: white; font-family: sans-serif; background: rgba(0,0,0,0.5); padding: 10px 0; }
-        #error-log { position: fixed; bottom: 10px; left: 10px; color: red; font-size: 10px; z-index: 2000; background: white; }
+        body, html { margin: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
+    #msg { position: fixed; top: 10px; width: 100%; text-align: center; z-index: 1000; color: white; font-family: sans-serif; background: rgba(0,0,0,0.5); padding: 10px 0; }
+    #error-log { position: fixed; bottom: 10px; left: 10px; color: red; font-size: 10px; z-index: 2000; background: white; }
+    /* این کد بخش سیاه را حذف می‌کند */
+    .mindar-ui-overlay { display: none !important; }
     </style>
 </head>
 <body>
