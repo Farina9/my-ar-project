@@ -10,49 +10,34 @@
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
     html, body {
-      margin: 0;
-      padding: 0;
-      width: 100vw;
-      height: 100vh;
+      margin: 0; padding: 0;
+      width: 100vw; height: 100vh;
       overflow: hidden;
       background: transparent !important;
       font-family: system-ui, -apple-system, sans-serif;
     }
 
-    /* اجبار نمایش تصویر زنده دوربین در کل پس‌زمینه */
-    video {
+    video:not(.ar-media-video) {
       position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 100vw !important;
-      height: 100vh !important;
+      top: 0 !important; left: 0 !important;
+      width: 100vw !important; height: 100vh !important;
       object-fit: cover !important;
       z-index: 1 !important;
       display: block !important;
     }
 
-    /* صحنه سه بعدی در لایه روی ویدیو و کاملاً شفاف */
     a-scene {
       position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 100vw !important;
-      height: 100vh !important;
+      top: 0 !important; left: 0 !important;
+      width: 100vw !important; height: 100vh !important;
       z-index: 2 !important;
-    }
-
-    .a-canvas {
-      background-color: transparent !important;
     }
 
     #topbar {
       position: fixed;
-      top: 14px;
-      left: 50%;
+      top: 14px; left: 50%;
       transform: translateX(-50%);
       z-index: 100;
       padding: 10px 20px;
@@ -68,9 +53,7 @@
 
     #log {
       position: fixed;
-      bottom: 10px;
-      left: 10px;
-      right: 10px;
+      bottom: 10px; left: 10px; right: 10px;
       max-height: 80px;
       overflow-y: auto;
       background: rgba(0, 0, 0, 0.7);
@@ -90,6 +73,9 @@
   <div id="topbar">در حال آماده‌سازی دوربین...</div>
   <div id="log"></div>
 
+  <!-- مخزن تگ‌های ویدیو برای پخش روان -->
+  <div id="video-container" style="display:none;"></div>
+
   <a-scene
     mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; uiLoading: no; uiError: no; filterMinCF: 0.0001; filterBeta: 0.001;"
     color-space="sRGB"
@@ -105,6 +91,7 @@
   <script>
     const $top = document.getElementById('topbar');
     const $log = document.getElementById('log');
+    const $vCont = document.getElementById('video-container');
 
     function log(msg) {
       console.log(msg);
@@ -112,7 +99,12 @@
       $log.scrollTop = $log.scrollHeight;
     }
 
-    window.onerror = (msg, url, line) => log(`[Err] ${msg}:${line}`);
+    // باز کردن قفل صدای ویدیو با اولین لمس صفحه
+    window.addEventListener('click', () => {
+      document.querySelectorAll('.ar-media-video').forEach(v => {
+        if (v.paused) v.play().then(() => v.pause()).catch(() => {});
+      });
+    }, { once: true });
 
     async function initAR() {
       try {
@@ -122,34 +114,74 @@
           const res = await fetch('./config.json', { cache: 'no-store' });
           if (res.ok) cfg = await res.json();
         } catch (e) {
-          log('Config fallback to default');
+          log('Config fallback');
         }
 
         const root = document.getElementById('root');
-        const models = cfg.models || [];
+        const items = cfg.models || [];
 
-        models.forEach((item) => {
+        items.forEach((item, index) => {
           const [idx, path, scale, pos, autoRot] = item;
+          const isVideo = path.toLowerCase().endsWith('.mp4') || path.toLowerCase().endsWith('.webm');
+
           const anchor = document.createElement('a-entity');
           anchor.setAttribute('mindar-image-target', `targetIndex: ${idx}`);
 
-          anchor.addEventListener('targetFound', () => {
-            $top.textContent = `تارگت ${idx} شناسایی شد!`;
-          });
+          if (isVideo) {
+            // ساخت المان HTML ویدیو
+            const vId = `ar-video-${index}`;
+            const vid = document.createElement('video');
+            vid.id = vId;
+            vid.src = path;
+            vid.className = 'ar-media-video';
+            vid.setAttribute('crossorigin', 'anonymous');
+            vid.setAttribute('playsinline', '');
+            vid.setAttribute('webkit-playsinline', '');
+            vid.loop = true;
+            vid.muted = true; // پیش‌فرض بی‌صدا برای اجرای روان، با کلیک آنمیوت می‌شود
+            $vCont.appendChild(vid);
 
-          anchor.addEventListener('targetLost', () => {
-            $top.textContent = 'دوربین را به سمت تصویر بگیرید...';
-          });
+            // المان a-video در فضای سه‌بعدی
+            const aVideo = document.createElement('a-video');
+            aVideo.setAttribute('src', `#${vId}`);
+            aVideo.setAttribute('width', '1');
+            aVideo.setAttribute('height', '0.5625'); // نسبت ۱۶:۹ استاندارد
+            if (scale) aVideo.setAttribute('scale', scale);
+            if (pos) aVideo.setAttribute('position', pos);
 
-          const model = document.createElement('a-gltf-model');
-          model.setAttribute('src', path);
-          if (scale) model.setAttribute('scale', scale);
-          if (pos) model.setAttribute('position', pos);
-          if (autoRot) {
-            model.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 6000; easing: linear');
+            anchor.appendChild(aVideo);
+
+            anchor.addEventListener('targetFound', () => {
+              $top.textContent = `تارگت ${idx} شناسایی شد (پخش ویدیو)`;
+              vid.play().catch(err => log('Video play error: ' + err));
+            });
+
+            anchor.addEventListener('targetLost', () => {
+              $top.textContent = 'دوربین را به سمت تصویر بگیرید...';
+              vid.pause();
+            });
+
+          } else {
+            // مدل ۳بعدی GLB / GLTF
+            const model = document.createElement('a-gltf-model');
+            model.setAttribute('src', path);
+            if (scale) model.setAttribute('scale', scale);
+            if (pos) model.setAttribute('position', pos);
+            if (autoRot) {
+              model.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 6000; easing: linear');
+            }
+
+            anchor.appendChild(model);
+
+            anchor.addEventListener('targetFound', () => {
+              $top.textContent = `تارگت ${idx} شناسایی شد!`;
+            });
+
+            anchor.addEventListener('targetLost', () => {
+              $top.textContent = 'دوربین را به سمت تصویر بگیرید...';
+            });
           }
 
-          anchor.appendChild(model);
           root.appendChild(anchor);
         });
 
