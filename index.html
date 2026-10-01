@@ -1,56 +1,482 @@
-// ===== ویدیوها =====
-if (cfg.videos && cfg.videos.length) {
-  cfg.videos.forEach((v, i) => {
-    const [idx, path, scale, pos] = v;
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+  />
 
-    const anchor = document.createElement('a-entity');
-    anchor.setAttribute('mindar-image-target', `targetIndex: ${idx}`);
+  <title>تجربه واقعیت افزوده</title>
 
-    const videoId = `vid-${i}`;
-    const videoEl = document.createElement('video');
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
 
-    videoEl.id = videoId;
-    videoEl.src = path;
-    videoEl.loop = true;
-    videoEl.muted = true; // برای شروع خودکار ویدیو
-    videoEl.playsInline = true;
-    videoEl.setAttribute('playsinline', '');
-    videoEl.setAttribute('webkit-playsinline', '');
-    videoEl.preload = 'auto';
-    videoEl.crossOrigin = 'anonymous';
+  <style>
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: Arial, Tahoma, sans-serif;
+    }
 
-    $assets.appendChild(videoEl);
+    a-scene {
+      position: fixed !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      z-index: 1;
+    }
 
-    const plane = document.createElement('a-plane');
-    plane.setAttribute('width', '1');
-    plane.setAttribute('height', '0.5625');
-    plane.setAttribute('scale', scale || '1 1 1');
-    plane.setAttribute('position', pos || '0 0 0');
-    plane.setAttribute(
-      'material',
-      'shader: flat; side: double; src: #' + videoId
-    );
+    a-scene canvas {
+      position: fixed !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      z-index: 2;
+    }
 
-    anchor.appendChild(plane);
-    $root.appendChild(anchor);
+    /* فقط ویدیوی دوربین MindAR، نه ویدیوی محتوای AR */
+    video[data-mindar-video] {
+      position: fixed !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important;
+      z-index: 0 !important;
+    }
 
-    anchor.addEventListener('targetFound', async () => {
-      $top.innerText = 'ویدیو شناسایی شد';
-      log('Video target found: ' + idx);
+    #topbar {
+      position: fixed;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      min-width: 190px;
+      padding: 10px 18px;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.68);
+      border-radius: 22px;
+      text-align: center;
+      font-size: 16px;
+      white-space: nowrap;
+      pointer-events: none;
+    }
 
+    #sound-btn {
+      position: fixed;
+      right: 16px;
+      bottom: 110px;
+      z-index: 1100;
+      display: none;
+      padding: 12px 18px;
+      border: 0;
+      border-radius: 24px;
+      color: #fff;
+      background: #2563eb;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    #log {
+      position: fixed;
+      left: 10px;
+      right: 10px;
+      bottom: 10px;
+      z-index: 1000;
+      height: 78px;
+      box-sizing: border-box;
+      padding: 6px;
+      overflow-y: auto;
+      direction: ltr;
+      color: #00ff88;
+      background: rgba(0, 0, 0, 0.78);
+      font: 11px/1.4 monospace;
+      text-align: left;
+    }
+
+    #start-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      padding: 24px;
+      box-sizing: border-box;
+      color: #fff;
+      background: #111;
+      text-align: center;
+    }
+
+    #start-screen p {
+      margin: 0;
+      font-size: 17px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 28px;
+      padding: 15px 24px;
+      color: #fff;
+      background: #2563eb;
+      font-size: 17px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+  </style>
+</head>
+
+<body>
+  <div id="start-screen">
+    <p>برای شروع، دسترسی دوربین را تأیید کنید</p>
+    <button id="start-btn">شروع تجربه واقعیت افزوده</button>
+  </div>
+
+  <div id="topbar">در انتظار دوربین...</div>
+
+  <button id="sound-btn">فعال‌کردن صدا</button>
+
+  <div id="log"></div>
+
+  <a-scene
+    embedded
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false"
+    mindar-image="
+      imageTargetSrc: ./assets/targets.mind;
+      autoStart: false;
+      uiLoading: no;
+      uiScanning: no;
+      uiError: no;
+      maxTrack: 2;
+    "
+  >
+    <a-assets id="assets-container"></a-assets>
+
+    <a-camera
+      position="0 0 0"
+      look-controls="enabled: false"
+      wasd-controls="enabled: false"
+    ></a-camera>
+
+    <a-entity id="main-root"></a-entity>
+  </a-scene>
+
+  <script>
+    const logBox = document.getElementById('log');
+    const topbar = document.getElementById('topbar');
+    const root = document.getElementById('main-root');
+    const assets = document.getElementById('assets-container');
+    const soundButton = document.getElementById('sound-btn');
+
+    const videoItems = [];
+
+    function log(message) {
+      logBox.textContent += message + '\\n';
+      logBox.scrollTop = logBox.scrollHeight;
+      console.log(message);
+    }
+
+    function setStatus(message) {
+      topbar.textContent = message;
+    }
+
+    function isVideoPlaying(video) {
+      return (
+        video.currentTime > 0 &&
+        !video.paused &&
+        !video.ended &&
+        video.readyState >= 2
+      );
+    }
+
+    function markCameraVideo(video) {
+      if (!video) return;
+
+      video.setAttribute('data-mindar-video', '');
+      video.style.position = 'fixed';
+      video.style.left = '0';
+      video.style.top = '0';
+      video.style.width = '100vw';
+      video.style.height = '100vh';
+      video.style.objectFit = 'cover';
+      video.style.zIndex = '0';
+    }
+
+    function findAndFixCameraVideo() {
+      const allVideos = document.querySelectorAll('video');
+
+      allVideos.forEach((video) => {
+        if (video.srcObject && !video.id.startsWith('ar-content-video-')) {
+          markCameraVideo(video);
+        }
+      });
+    }
+
+    function startCameraVideoWatcher() {
+      findAndFixCameraVideo();
+
+      const observer = new MutationObserver(() => {
+        findAndFixCameraVideo();
+      });
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+
+      const interval = setInterval(findAndFixCameraVideo, 500);
+
+      setTimeout(() => {
+        clearInterval(interval);
+      }, 20000);
+    }
+
+    function createVideoTexture(video) {
+      const texture = new THREE.VideoTexture(video);
+
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.format = THREE.RGBAFormat;
+      texture.generateMipmaps = false;
+      texture.needsUpdate = true;
+
+      return texture;
+    }
+
+    function createVideoPlane(video, scale, position) {
+      const plane = document.createElement('a-plane');
+
+      plane.setAttribute('width', '1');
+      plane.setAttribute('height', '0.5625');
+      plane.setAttribute('position', positionheight', '0.5625');
+      plane.setAttribute('position', position || '1 1 1');
+
+      plane.addEventListener('loaded', () => {
+        const mesh = plane.getObject3D('mesh');
+
+        if (!mesh) {
+          log('Video mesh is not ready.');
+          return;
+        }
+
+        const texture = createVideoTexture(video);
+
+        const material = new THREE.MeshBasicMaterial({
+          map: texture,
+          side: THREE.DoubleSide,
+          transparent: false,
+          toneMapped: false
+        });
+
+        mesh.material = material;
+        mesh.material.needsUpdate = true;
+
+        log('Video texture attached.');
+      });
+
+      return plane;
+    }
+
+    async function playVideo(item) {
       try {
-        await videoEl.play();
-        log('Video playing: ' + path);
-      } catch (e) {
-        log('Video play error: ' + e.message);
+        item.video.muted = true;
+        await item.video.play();
+
+        item.videoTexture.needsUpdate = true;
+        soundButton.style.display = 'block';
+
+        log('Video playing without sound.');
+      } catch (error) {
+        log('Video play error: ' + error.message);
       }
+    }
+
+    function pauseVideo(item) {
+      item.video.pause();
+    }
+
+    function createModel(item) {
+      const [index, path, scale, position] = item;
+
+      const anchor = document.createElement('a-entity');
+      anchor.setAttribute(
+        'mindar-image-target',
+        'targetIndex: ' + index
+      );
+
+      const model = document.createElement('a-gltf-model');
+      model.setAttribute('src', path);
+      model.setAttribute('scale', scale || '1 1 1');
+      model.setAttribute('position', position || '0 0 0');
+
+      anchor.appendChild(model);
+      root.appendChild(anchor);
+
+      anchor.addEventListener('targetFound', () => {
+        setStatus('مدل شناسایی شد');
+        log('Model target found: ' + index);
+      });
+
+      anchor.addEventListener('targetLost', () => {
+        setStatus('در انتظار تصویر...');
+      });
+
+      log('Model added on target ' + index);
+    }
+
+    function createVideo(item, itemNumber) {
+      const [index, path, scale, position] = item;
+
+      const anchor = document.createElement('a-entity');
+      anchor.setAttribute(
+        'mindar-image-target',
+        'targetIndex: ' + index
+      );
+
+      const video = document.createElement('video');
+
+      video.id = 'ar-content-video-' + itemNumber;
+      video.src = path;
+      video.loop = true;
+      video.muted = true;
+      video.autoplay = false;
+      video.playsInline = true;
+      video.crossOrigin = 'anonymous';
+      video.preload = 'auto';
+
+      video.setAttribute('playsinline', '');
+      video.setAttribute('webkit-playsinline', '');
+      video.setAttribute('crossorigin', 'anonymous');
+
+      assets.appendChild(video);
+
+      const videoTexture = createVideoTexture(video);
+      const plane = createVideoPlane(video, scale, position);
+
+      anchor.appendChild(plane);
+      root.appendChild(anchor);
+
+      const videoItem = {
+        index,
+        video,
+        videoTexture,
+        anchor
+      };
+
+      videoItems.push(videoItem);
+
+      anchor.addEventListener('targetFound', () => {
+        setStatus('ویدیو شناسایی شد');
+        log('Video target found: ' + index);
+        playVideo(videoItem);
+      });
+
+      anchor.addEventListener('targetLost', () => {
+        pauseVideo(videoItem);
+        setStatus('در انتظار تصویر...');
+        log('Video target lost: ' + index);
+      });
+
+      video.addEventListener('loadeddata', () => {
+        videoTexture.needsUpdate = true;
+        log('Video loaded: ' + path);
+      });
+
+      video.addEventListener('error', () => {
+        log('Video file error: ' + path);
+      });
+
+      log('Video added on target ' + index);
+    }
+
+    async function loadConfig() {
+      const response = await fetch('./config.json?v=' + Date.now());
+
+      if (!response.ok) {
+        throw new Error('config.json HTTP ' + response.status);
+      }
+
+      return await response.json();
+    }
+
+    async function startAR() {
+      try {
+        log('Loading config.json...');
+
+        const config = await loadConfig();
+
+        if (Array.isArray(config.models)) {
+          config.models.forEach(createModel);
+        }
+
+        if (Array.isArray(config.videos)) {
+          config.videos.forEach(createVideo);
+        }
+
+        const scene = document.querySelector('a-scene');
+
+        const mindarSystem =
+          scene.systems['mindar-image-system'];
+
+        if (!mindarSystem) {
+          throw new Error('MindAR system not found');
+        }
+
+        scene.addEventListener('arReady', () => {
+          setStatus('دوربین آماده است');
+          log('AR Ready.');
+          startCameraVideoWatcher();
+        });
+
+        scene.addEventListener('arError', (event) => {
+          setStatus('خطا در دوربین');
+          log('AR Error: ' + JSON.stringify(event.detail || {}));
+        });
+
+        mindarSystem.start();
+
+        log('AR System Started.');
+        startCameraVideoWatcher();
+
+      } catch (error) {
+        setStatus('خطا');
+        log('Global Error: ' + error.message);
+        console.error(error);
+      }
+    }
+
+    soundButton.addEventListener('click', async () => {
+      for (const item of videoItems) {
+        item.video.muted = false;
+
+        try {
+          await item.video.play();
+        } catch (error) {
+          log('Sound play error: ' + error.message);
+        }
+      }
+
+      soundButton.textContent = 'صدا فعال است';
+      soundButton.disabled = true;
+      log('Sound enabled by user.');
     });
 
-    anchor.addEventListener('targetLost', () => {
-      videoEl.pause();
-      log('Video target lost: ' + idx);
+    document.getElementById('start-btn').addEventListener('click', async () => {
+      document.getElementById('start-screen').remove();
+      await startAR();
     });
-
-    log('Video added on target ' + idx);
-  });
-}
+  </script>
+</body>
+</html>
