@@ -1,243 +1,400 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>واقعیت افزوده</title>
-
-  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>واقعیت افزوده وب (WebAR Player)</title>
+  
+  <!-- کتابخانه‌های A-Frame و MindAR -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Tahoma, sans-serif; }
     html, body {
-      width: 100%; height: 100%; margin: 0; padding: 0;
-      overflow: hidden; background: transparent !important;
-      font-family: sans-serif;
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      overflow: hidden; background: #000;
     }
 
-    /* صحنه واقعیت افزوده باید کاملاً شفاف باشد تا وب‌کم زیر آن دیده شود */
-    a-scene {
-      position: fixed !important; inset: 0 !important;
-      width: 100vw !important; height: 100vh !important;
-      z-index: 2 !important;
-      background: transparent !important;
-    }
-
-    /* استایل اختصاصی برای ویدئوی پس‌زمینه وب‌کم */
-    .ar-camera-feed {
+    /* لایه ویدئوی دوربین در زیر کانواس */
+    video:not(.ar-media-element) {
       position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 100vw !important;
-      height: 100vh !important;
+      top: 0 !important; left: 0 !important;
+      width: 100vw !important; height: 100vh !important;
       object-fit: cover !important;
-      z-index: 1 !important;
-      display: block !important;
-      visibility: visible !important;
-      opacity: 1 !important;
+      z-index: 0 !important;
     }
 
+    /* پنهان‌سازی تگ‌های مدیا صوتی و تصویری که در DOM تزریق می‌شوند */
+    .ar-media-element {
+      position: absolute; width: 1px; height: 1px;
+      opacity: 0; pointer-events: none;
+    }
+
+    /* کانواس رندر سه‌بعدی */
+    .a-canvas {
+      position: fixed !important;
+      top: 0 !important; left: 0 !important;
+      width: 100% !important; height: 100% !important;
+      z-index: 1 !important;
+    }
+
+    /* نوار وضعیت بالا */
+    #status-bar {
+      position: fixed; top: 12px; left: 12px; right: 12px;
+      background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(6px);
+      color: #38bdf8; padding: 10px 16px; border-radius: 8px;
+      font-size: 13px; font-weight: bold; text-align: center;
+      z-index: 10; border: 1px solid rgba(56, 189, 248, 0.3);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+
+    /* پرده شروع برای مجوز دوربین و تعامل صوتی */
     #start-overlay {
-      position: fixed; inset: 0; z-index: 999999;
+      position: fixed; inset: 0; background: #090d16;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      padding: 20px; color: white; background: #0e1117; text-align: center;
+      z-index: 99; padding: 24px; text-align: center;
     }
-    #start-button {
-      border: none; border-radius: 25px; padding: 16px 36px;
-      color: white; background: #2563eb; font-size: 18px; font-weight: bold;
-      cursor: pointer; -webkit-tap-highlight-color: transparent;
+    #start-overlay h2 { color: #38bdf8; margin-bottom: 8px; font-size: 22px; }
+    #start-overlay p { color: #94a3b8; font-size: 14px; max-width: 380px; margin-bottom: 24px; line-height: 1.6; }
+    #start-btn {
+      background: #2563eb; color: #fff; border: none; padding: 14px 28px;
+      border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer;
+      box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
     }
-    #status {
-      position: fixed; top: 15px; left: 50%; transform: translateX(-50%);
-      z-index: 10000; padding: 8px 16px; border-radius: 20px;
-      color: white; background: rgba(0,0,0,0.8); font-size: 14px; pointer-events: none;
-    }
+
+    /* دکمه فعال‌سازی صدا بعد از شروع */
     #sound-btn {
-      position: fixed; bottom: 85px; right: 15px; z-index: 10000;
-      display: none; border: none; border-radius: 20px; padding: 10px 18px;
-      background: #16a34a; color: white; font-weight: bold; cursor: pointer;
-    }
-    #log {
-      position: fixed; bottom: 10px; left: 10px; right: 10px; z-index: 10000;
-      max-height: 70px; padding: 6px 10px; overflow-y: auto; border-radius: 6px;
-      color: #00ff88; background: rgba(0, 0, 0, 0.85); direction: ltr;
-      font: 11px/1.4 monospace; text-align: left; pointer-events: none;
-    }
-    video.ar-content-video {
-      position: fixed; left: -100px; top: -100px; width: 1px; height: 1px; opacity: 0.001; pointer-events: none;
+      position: fixed; bottom: 20px; right: 20px;
+      background: rgba(16, 185, 129, 0.9); color: #fff;
+      border: none; padding: 10px 16px; border-radius: 30px;
+      font-size: 13px; font-weight: bold; cursor: pointer;
+      z-index: 10; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
     }
   </style>
-
-  <script>
-    AFRAME.registerComponent('video-texture-plane', {
-      schema: { videoSelector: { type: 'string' } },
-      init: function () {
-        this.video = document.querySelector(this.data.videoSelector);
-        if (!this.video) return;
-        this.texture = new THREE.VideoTexture(this.video);
-        this.texture.minFilter = THREE.LinearFilter;
-        this.texture.magFilter = THREE.LinearFilter;
-        const geometry = new THREE.PlaneGeometry(1, 0.5625);
-        const material = new THREE.MeshBasicMaterial({ map: this.texture, side: THREE.DoubleSide });
-        this.mesh = new THREE.Mesh(geometry, material);
-        this.el.setObject3D('mesh', this.mesh);
-      },
-      tick: function () {
-        if (this.video && this.texture && this.video.readyState >= 2) {
-          this.texture.needsUpdate = true;
-        }
-      }
-    });
-  </script>
 </head>
 <body>
 
+  <!-- پرده شروع -->
   <div id="start-overlay">
-    <h2>واقعیت افزوده</h2>
-    <p>برای شروع، روی دکمه زیر کلیک کنید</p>
-    <button id="start-button" onclick="runAR()">شروع تجربه</button>
+    <h2>سامانه واقعیت افزوده وب</h2>
+    <p>جهت شروع تجربه AR، دسترسی به دوربین و فعال‌سازی رسانه‌ها روی دکمه زیر کلیک نمایید.</p>
+    <button id="start-btn">شروع تجربه واقعیت افزوده</button>
   </div>
 
-  <div id="status">آماده برای شروع</div>
-  <button id="sound-btn" onclick="toggleSound()">🔊 فعال‌سازی صدا</button>
-  <div id="log">منتظر لمس شروع...</div>
+  <div id="status-bar">آماده شروع...</div>
+  <button id="sound-btn">🔊 فعال‌سازی صدا</button>
 
+  <!-- صحنه واقعیت افزوده MindAR + A-Frame -->
   <a-scene
     id="ar-scene"
+    mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: false; filterMinCF: 0.0001; filterBeta: 0.001;"
+    renderer="alpha: true; antialias: true; colorManagement: true;"
+    color-space="sRGB"
     embedded
-    mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: false; uiLoading: no; uiScanning: no;"
     vr-mode-ui="enabled: false"
-    device-orientation-permission-ui="enabled: false"
-    renderer="alpha: true; antialias: true;"
-  >
-    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+    device-orientation-permission-ui="enabled: false">
+    
+    <a-camera position="0 0 0" look-controls="enabled: false" cursor="fuse: false; rayOrigin: mouse;" raycaster="far: 10000; objects: .clickable;"></a-camera>
+
+    <!-- ریشه اضافه شدن پویای تارگت‌ها بر اساس کانفیگ -->
     <a-entity id="targets-root"></a-entity>
   </a-scene>
 
-  <script>
-    let isMuted = true;
-    const loadedVideos = [];
+<script>
+  let activeAudios = [];
+  let activeVideos = [];
+  let isSoundUnlocked = false;
 
-    function printLog(msg) {
-      const logEl = document.getElementById('log');
-      logEl.innerText += '\n> ' + msg;
-      logEl.scrollTop = logEl.scrollHeight;
-      console.log(msg);
+  const statusBar = document.getElementById('status-bar');
+  const startOverlay = document.getElementById('start-overlay');
+  const startBtn = document.getElementById('start-btn');
+  const soundBtn = document.getElementById('sound-btn');
+
+  function setStatus(msg) {
+    if (statusBar) statusBar.innerText = msg;
+  }
+
+  /* ========================================================
+     کامپوننت رندر ویدئو با Three.js VideoTexture
+     ======================================================== */
+  AFRAME.registerComponent('video-texture-plane', {
+    schema: {
+      videoSelector: { type: 'string' },
+      width: { type: 'number', default: 1 },
+      height: { type: 'number', default: 1 }
+    },
+    init: function () {
+      const videoEl = document.querySelector(this.data.videoSelector);
+      if (!videoEl) return;
+
+      const texture = new THREE.VideoTexture(videoEl);
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.format = THREE.RGBAFormat;
+
+      const geometry = new THREE.PlaneGeometry(this.data.width, this.data.height);
+      const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+      this.mesh = new THREE.Mesh(geometry, material);
+      this.el.setObject3D('mesh', this.mesh);
+    },
+    remove: function () {
+      if (this.mesh) this.el.removeObject3D('mesh');
     }
+  });
 
-    /* پیدا کردن و نمایش اجباری المان وب‌کم */
-    function forceCameraFeed() {
-      const allVideos = Array.from(document.querySelectorAll('video'));
-      const camVideo = allVideos.find(v => v.srcObject || (!v.classList.contains('ar-content-video') && v.id !== 'ar-content-video'));
+  /* ========================================================
+     کامپوننت چرخش خودکار و چرخش دستی لمسی مدل سه‌بعدی
+     ======================================================== */
+  AFRAME.registerComponent('ar-model-controller', {
+    schema: {
+      mode: { type: 'string', default: 'none' }, // none, auto, manual, both
+      speed: { type: 'number', default: 1 }
+    },
+    init: function () {
+      this.touchStartX = 0;
+      this.touchStartY = 0;
+      this.isInteracting = false;
 
-      if (camVideo) {
-        camVideo.classList.add('ar-camera-feed');
-        camVideo.setAttribute('playsinline', '');
-        camVideo.setAttribute('webkit-playsinline', '');
-        camVideo.muted = true;
-        camVideo.play().catch(e => console.log('cam play err:', e));
-        printLog('فید دوربین در تصویر قرار گرفت');
-        return true;
-      }
-      return false;
-    }
-
-    function toggleSound() {
-      isMuted = !isMuted;
-      const soundBtn = document.getElementById('sound-btn');
-      soundBtn.innerText = isMuted ? '🔊 فعال‌سازی صدا' : '🔈 قطع صدا';
-      loadedVideos.forEach(v => { v.muted = isMuted; });
-    }
-
-    async function runAR() {
-      const btn = document.getElementById('start-button');
-      const overlay = document.getElementById('start-overlay');
-      const status = document.getElementById('status');
-      
-      btn.disabled = true;
-      btn.innerText = 'در حال راه‌اندازی...';
-      printLog('اجرای برنامه شروع شد');
-
-      try {
-        const scene = document.getElementById('ar-scene');
-
-        // ۱. خواندن کانفیگ
-        const res = await fetch('./config.json?v=' + Date.now());
-        const config = await res.json();
-
-        // ۲. اتصال ویدیوهای ترگت
-        if (config.videos && config.videos.length > 0) {
-          config.videos.forEach((item, index) => {
-            const targetIdx = item[0];
-            const videoPath = item[1];
-            const vId = 'v-' + index;
-
-            const v = document.createElement('video');
-            v.id = vId;
-            v.className = 'ar-content-video';
-            v.src = videoPath;
-            v.loop = true;
-            v.muted = true;
-            v.playsInline = true;
-            v.setAttribute('playsinline', '');
-            v.setAttribute('webkit-playsinline', '');
-            v.crossOrigin = 'anonymous';
-            document.body.appendChild(v);
-            loadedVideos.push(v);
-
-            const target = document.createElement('a-entity');
-            target.setAttribute('mindar-image-target', 'targetIndex: ' + targetIdx);
-
-            const plane = document.createElement('a-entity');
-            plane.setAttribute('video-texture-plane', 'videoSelector: #' + vId);
-            plane.setAttribute('scale', item[2] || '1 1 1');
-            if (item[3]) plane.setAttribute('position', item[3]);
-            
-            target.appendChild(plane);
-            document.getElementById('targets-root').appendChild(target);
-
-            target.addEventListener('targetFound', () => {
-              status.innerText = 'تصویر شناسایی شد!';
-              document.getElementById('sound-btn').style.display = 'block';
-              printLog('Target Found: ' + targetIdx);
-              v.play().catch(e => printLog('Play Error: ' + e.message));
-            });
-
-            target.addEventListener('targetLost', () => {
-              status.innerText = 'تصویر را مقابل دوربین بگیرید';
-              v.pause();
-            });
-          });
+      this.onTouchStart = (e) => {
+        if (e.touches && e.touches.length === 1) {
+          this.touchStartX = e.touches[0].clientX;
+          this.touchStartY = e.touches[0].clientY;
+          this.isInteracting = true;
         }
+      };
 
-        // ۳. استارت سیستم
-        const mindarSystem = scene.systems['mindar-image-system'];
-        if (!mindarSystem) throw new Error('MindAR در دسترس نیست');
+      this.onTouchMove = (e) => {
+        if (!this.isInteracting || !e.touches || e.touches.length !== 1) return;
+        const deltaX = e.touches[0].clientX - this.touchStartX;
+        const currentRot = this.el.getAttribute('rotation') || { x: 0, y: 0, z: 0 };
+        this.el.setAttribute('rotation', {
+          x: currentRot.x,
+          y: currentRot.y + deltaX * 0.45,
+          z: currentRot.z
+        });
+        this.touchStartX = e.touches[0].clientX;
+      };
 
-        printLog('در حال دریافت دسترسی دوربین...');
-        await mindarSystem.start();
+      this.onTouchEnd = () => { this.isInteracting = false; };
 
-        overlay.style.display = 'none';
-        status.innerText = 'تصویر را مقابل دوربین بگیرید';
-        printLog('دوربین روشن شد');
-
-        // اطمینان از قرارگیری ویدیو در لایه مناسب
-        let tries = 0;
-        const checkTimer = setInterval(() => {
-          tries++;
-          if (forceCameraFeed() || tries > 10) {
-            clearInterval(checkTimer);
-          }
-        }, 300);
-
-      } catch (err) {
-        printLog('خطا: ' + err.message);
-        alert('خطا: ' + err.message);
-        btn.disabled = false;
-        btn.innerText = 'تلاش مجدد';
+      if (this.data.mode === 'manual' || this.data.mode === 'both') {
+        window.addEventListener('touchstart', this.onTouchStart, { passive: true });
+        window.addEventListener('touchmove', this.onTouchMove, { passive: true });
+        window.addEventListener('touchend', this.onTouchEnd);
       }
+    },
+    tick: function (time, delta) {
+      if ((this.data.mode === 'auto' || this.data.mode === 'both') && !this.isInteracting) {
+        const rot = this.el.getAttribute('rotation') || { x: 0, y: 0, z: 0 };
+        const change = (this.data.speed * (delta / 1000)) * 45;
+        this.el.setAttribute('rotation', {
+          x: rot.x,
+          y: (rot.y + change) % 360,
+          z: rot.z
+        });
+      }
+    },
+    remove: function () {
+      window.removeEventListener('touchstart', this.onTouchStart);
+      window.removeEventListener('touchmove', this.onTouchMove);
+      window.removeEventListener('touchend', this.onTouchEnd);
     }
-  </script>
+  });
+
+  /* ========================================================
+     ساخت پویای تارگت‌ها بر اساس فایل config.json
+     ======================================================== */
+  function buildDynamicScene(config) {
+    const root = document.getElementById('targets-root');
+    root.innerHTML = '';
+    activeVideos = [];
+    activeAudios = [];
+
+    (config.targets || []).forEach((t) => {
+      const targetEntity = document.createElement('a-entity');
+      targetEntity.setAttribute('mindar-image-target', `targetIndex: ${t.index}`);
+
+      let targetVideo = null;
+      let targetAudio = null;
+
+      // ۱. ویدئو
+      if (t.type === 'video') {
+        const videoId = `video-el-${t.index}`;
+        const v = document.createElement('video');
+        v.id = videoId;
+        v.className = 'ar-media-element';
+        v.src = t.src;
+        v.loop = true;
+        v.muted = true;
+        v.playsInline = true;
+        v.setAttribute('playsinline', '');
+        v.crossOrigin = 'anonymous';
+        document.body.appendChild(v);
+        targetVideo = v;
+        activeVideos.push(v);
+
+        const plane = document.createElement('a-entity');
+        plane.setAttribute('video-texture-plane', `videoSelector: #${videoId}`);
+        plane.setAttribute('scale', t.scale || '1 1 1');
+        plane.setAttribute('position', t.position || '0 0 0');
+        if (t.link) plane.classList.add('clickable');
+        targetEntity.appendChild(plane);
+      }
+
+      // ۲. مدل سه‌بعدی
+      else if (t.type === 'model') {
+        const model = document.createElement('a-entity');
+        model.setAttribute('gltf-model', `url(${t.src})`);
+        model.setAttribute('scale', t.scale || '0.3 0.3 0.3');
+        model.setAttribute('position', t.position || '0 0 0');
+
+        if (t.rotationMode && t.rotationMode !== 'none') {
+          model.setAttribute('ar-model-controller', `mode: ${t.rotationMode}; speed: ${t.autoSpeed || 1}`);
+        }
+        if (t.link) model.classList.add('clickable');
+        targetEntity.appendChild(model);
+      }
+
+      // ۳. تصویر
+      else if (t.type === 'image') {
+        const imgPlane = document.createElement('a-plane');
+        imgPlane.setAttribute('src', t.src);
+        imgPlane.setAttribute('scale', t.scale || '1 1 1');
+        imgPlane.setAttribute('position', t.position || '0 0 0');
+        imgPlane.setAttribute('material', 'transparent: true;');
+        if (t.link) imgPlane.classList.add('clickable');
+        targetEntity.appendChild(imgPlane);
+      }
+
+      // ۴. صوت پس‌زمینه
+      else if (t.type === 'audio') {
+        targetAudio = new Audio(t.src);
+        targetAudio.loop = true;
+        activeAudios.push(targetAudio);
+
+        // آیکون صوتی نمادین روی صفحه
+        const soundIcon = document.createElement('a-plane');
+        soundIcon.setAttribute('position', t.position || '0 0 0');
+        soundIcon.setAttribute('scale', '0.4 0.4 0.4');
+        soundIcon.setAttribute('color', '#10b981');
+        soundIcon.setAttribute('text', 'value: Audio Playing; align: center; color: #fff;');
+        targetEntity.appendChild(soundIcon);
+      }
+
+      // ۵. دکمه کارت لینک وب
+      else if (t.type === 'link') {
+        const linkBtn = document.createElement('a-plane');
+        linkBtn.setAttribute('position', t.position || '0 0 0');
+        linkBtn.setAttribute('scale', t.scale || '1 0.4 1');
+        linkBtn.setAttribute('color', '#2563eb');
+        linkBtn.setAttribute('text', `value: ${t.linkTitle || 'مشاهده وب‌سایت'}; align: center; color: #ffffff;`);
+        linkBtn.classList.add('clickable');
+        linkBtn.addEventListener('click', () => {
+          if (t.linkUrl) window.open(t.linkUrl, '_blank');
+        });
+        targetEntity.appendChild(linkBtn);
+      }
+
+      // پیوند کلیک عمومی (در صورت وجود)
+      if (t.link) {
+        targetEntity.addEventListener('click', () => {
+          window.open(t.link, '_blank');
+        });
+      }
+
+      // رویداد پیدا شدن تارگت
+      targetEntity.addEventListener('targetFound', () => {
+        setStatus(`تارگت شماره ${t.index} شناسایی شد`);
+        soundBtn.style.display = 'block';
+
+        if (targetVideo) {
+          targetVideo.play().catch(e => console.log('Video autoplay locked:', e));
+        }
+        if (targetAudio && isSoundUnlocked) {
+          targetAudio.play().catch(e => console.log('Audio autoplay locked:', e));
+        }
+      });
+
+      // رویداد گم شدن تارگت
+      targetEntity.addEventListener('targetLost', () => {
+        setStatus('تصویر را در زاویه مناسب دوربین بگیرید');
+        if (targetVideo) targetVideo.pause();
+        if (targetAudio) targetAudio.pause();
+      });
+
+      root.appendChild(targetEntity);
+    });
+  }
+
+  /* ========================================================
+     تثبیت استایل دوربین پس از راه‌اندازی MindAR
+     ======================================================== */
+  function ensureCameraVideo() {
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts++;
+      const v = document.querySelector('video:not(.ar-media-element)');
+      if (v) {
+        v.style.position = 'fixed';
+        v.style.top = '0';
+        v.style.left = '0';
+        v.style.width = '100vw';
+        v.style.height = '100vh';
+        v.style.objectFit = 'cover';
+        v.style.zIndex = '0';
+        clearInterval(interval);
+      }
+      if (attempts > 30) clearInterval(interval);
+    }, 200);
+  }
+
+  /* ========================================================
+     راه‌اندازی اصلی بعد از کلیک روی دکمه شروع
+     ======================================================== */
+  startBtn.addEventListener('click', async () => {
+    startOverlay.style.display = 'none';
+    setStatus('در حال دریافت تنظیمات config.json...');
+
+    try {
+      // خواندن فایل کانفیگ با مکانیزم Cache Busting
+      const res = await fetch(`./config.json?v=${Date.now()}`);
+      if (!res.ok) throw new Error('فایل config.json یافت نشد یا در دسترس نیست.');
+      const config = await res.json();
+
+      buildDynamicScene(config);
+
+      const sceneEl = document.querySelector('a-scene');
+
+      const waitForScene = new Promise(resolve => {
+        if (sceneEl.hasLoaded) resolve();
+        else sceneEl.addEventListener('loaded', resolve, { once: true });
+      });
+      await waitForScene;
+
+      setStatus('در حال فعال‌سازی سیستم AR و دوربین...');
+      const mindarSystem = sceneEl.systems['mindar-image-system'];
+      if (!mindarSystem) throw new Error('سیستم MindAR بارگذاری نشد.');
+
+      await mindarSystem.start();
+      ensureCameraVideo();
+      setStatus('تصویر مرجع را مقابل دوربین بگیرید');
+
+    } catch (err) {
+      console.error(err);
+      setStatus(`خطا: ${err.message}`);
+      alert(`خطا در اجرای برنامه: ${err.message}`);
+    }
+  });
+
+  /* فعال‌سازی سراسری صدا */
+  soundBtn.addEventListener('click', () => {
+    isSoundUnlocked = true;
+    activeVideos.forEach(v => { v.muted = false; });
+    activeAudios.forEach(a => { a.play().catch(() => {}); });
+    soundBtn.innerText = '🔊 صدا فعال شد';
+    setTimeout(() => { soundBtn.style.display = 'none'; }, 2000);
+  });
+</script>
 </body>
 </html>
