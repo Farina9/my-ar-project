@@ -19,6 +19,7 @@
       font-family: system-ui, -apple-system, sans-serif;
     }
 
+    /* ویدیوی دوربین */
     video:not(.ar-media-video) {
       position: fixed !important;
       top: 0 !important; left: 0 !important;
@@ -42,7 +43,7 @@
       z-index: 100;
       padding: 10px 20px;
       color: #ffffff;
-      background: rgba(0, 0, 0, 0.65);
+      background: rgba(0, 0, 0, 0.7);
       text-align: center;
       font-size: 14px;
       border-radius: 25px;
@@ -54,9 +55,9 @@
     #log {
       position: fixed;
       bottom: 10px; left: 10px; right: 10px;
-      max-height: 80px;
+      max-height: 85px;
       overflow-y: auto;
-      background: rgba(0, 0, 0, 0.7);
+      background: rgba(0, 0, 0, 0.75);
       color: #00ff66;
       font-family: monospace;
       font-size: 11px;
@@ -66,24 +67,57 @@
       direction: ltr;
       white-space: pre-wrap;
     }
+
+    /* پرده شروع برای فعال‌سازی قطعی صدا و تصویر */
+    #start-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.9);
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      text-align: center;
+      padding: 20px;
+    }
+
+    #start-btn {
+      margin-top: 20px;
+      padding: 14px 32px;
+      font-size: 16px;
+      font-weight: bold;
+      color: #fff;
+      background: #2563eb;
+      border: none;
+      border-radius: 30px;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+    }
   </style>
 </head>
 
 <body>
+  <div id="start-overlay">
+    <h2>سامانه واقعیت افزوده</h2>
+    <p>برای شروع تجربه و دسترسی به ویدیوها، دکمه زیر را لمس کنید.</p>
+    <button id="start-btn">ورود و شروع دوربین</button>
+  </div>
+
   <div id="topbar">در حال آماده‌سازی دوربین...</div>
   <div id="log"></div>
 
-  <!-- مخزن تگ‌های ویدیو برای پخش روان -->
-  <div id="video-container" style="display:none;"></div>
-
+  <!-- تگ assets داخلی A-Frame برای پری‌لود و هندل امن ویدیو -->
   <a-scene
-    mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; uiLoading: no; uiError: no; filterMinCF: 0.0001; filterBeta: 0.001;"
+    mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: false; uiLoading: no; uiError: no; filterMinCF: 0.0001; filterBeta: 0.001;"
     color-space="sRGB"
     embedded
     renderer="colorManagement: true, alpha: true, antialias: true"
     vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false"
   >
+    <a-assets id="a-assets-container"></a-assets>
     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
     <a-entity id="root"></a-entity>
   </a-scene>
@@ -91,7 +125,10 @@
   <script>
     const $top = document.getElementById('topbar');
     const $log = document.getElementById('log');
-    const $vCont = document.getElementById('video-container');
+    const $overlay = document.getElementById('start-overlay');
+    const $startBtn = document.getElementById('start-btn');
+    const $assets = document.getElementById('a-assets-container');
+    const sceneEl = document.querySelector('a-scene');
 
     function log(msg) {
       console.log(msg);
@@ -99,22 +136,17 @@
       $log.scrollTop = $log.scrollHeight;
     }
 
-    // باز کردن قفل صدای ویدیو با اولین لمس صفحه
-    window.addEventListener('click', () => {
-      document.querySelectorAll('.ar-media-video').forEach(v => {
-        if (v.paused) v.play().then(() => v.pause()).catch(() => {});
-      });
-    }, { once: true });
+    window.onerror = (msg, url, line) => log(`[Err] ${msg}:${line}`);
 
-    async function initAR() {
+    async function buildScene() {
       try {
-        log('Loading config.json...');
+        log('Fetching config.json...');
         let cfg = { models: [] };
         try {
           const res = await fetch('./config.json', { cache: 'no-store' });
           if (res.ok) cfg = await res.json();
         } catch (e) {
-          log('Config fallback');
+          log('Config not found, using default');
         }
 
         const root = document.getElementById('root');
@@ -128,8 +160,9 @@
           anchor.setAttribute('mindar-image-target', `targetIndex: ${idx}`);
 
           if (isVideo) {
-            // ساخت المان HTML ویدیو
-            const vId = `ar-video-${index}`;
+            const vId = `media-video-${index}`;
+
+            // ۱. ساخت تگ ویدیوی استاندارد در assets
             const vid = document.createElement('video');
             vid.id = vId;
             vid.src = path;
@@ -137,32 +170,39 @@
             vid.setAttribute('crossorigin', 'anonymous');
             vid.setAttribute('playsinline', '');
             vid.setAttribute('webkit-playsinline', '');
+            vid.preload = 'auto';
             vid.loop = true;
-            vid.muted = true; // پیش‌فرض بی‌صدا برای اجرای روان، با کلیک آنمیوت می‌شود
-            $vCont.appendChild(vid);
+            vid.muted = false;
+            $assets.appendChild(vid);
 
-            // المان a-video در فضای سه‌بعدی
-            const aVideo = document.createElement('a-video');
-            aVideo.setAttribute('src', `#${vId}`);
-            aVideo.setAttribute('width', '1');
-            aVideo.setAttribute('height', '0.5625'); // نسبت ۱۶:۹ استاندارد
-            if (scale) aVideo.setAttribute('scale', scale);
-            if (pos) aVideo.setAttribute('position', pos);
+            // ۲. صفحه مشبک (Plane) برای نمایش تکسچر ویدیو روی تارگت
+            const plane = document.createElement('a-plane');
+            plane.setAttribute('src', `#${vId}`);
+            plane.setAttribute('width', '1');
+            plane.setAttribute('height', '0.5625');
+            plane.setAttribute('position', pos || '0 0 0');
+            plane.setAttribute('scale', scale || '1 1 1');
 
-            anchor.appendChild(aVideo);
+            anchor.appendChild(plane);
 
             anchor.addEventListener('targetFound', () => {
               $top.textContent = `تارگت ${idx} شناسایی شد (پخش ویدیو)`;
-              vid.play().catch(err => log('Video play error: ' + err));
+              log(`Target ${idx} Found -> Playing video`);
+              vid.play().catch(err => {
+                log('Play blocked: ' + err.message);
+                vid.muted = true;
+                vid.play();
+              });
             });
 
             anchor.addEventListener('targetLost', () => {
               $top.textContent = 'دوربین را به سمت تصویر بگیرید...';
+              log(`Target ${idx} Lost`);
               vid.pause();
             });
 
           } else {
-            // مدل ۳بعدی GLB / GLTF
+            // ساخت مدل سه‌بعدی
             const model = document.createElement('a-gltf-model');
             model.setAttribute('src', path);
             if (scale) model.setAttribute('scale', scale);
@@ -175,6 +215,7 @@
 
             anchor.addEventListener('targetFound', () => {
               $top.textContent = `تارگت ${idx} شناسایی شد!`;
+              log(`Target ${idx} Found (Model)`);
             });
 
             anchor.addEventListener('targetLost', () => {
@@ -185,19 +226,24 @@
           root.appendChild(anchor);
         });
 
-        const sceneEl = document.querySelector('a-scene');
         sceneEl.addEventListener('arReady', () => {
           $top.textContent = 'آماده! دوربین را به سمت تصویر بگیرید.';
-          log('AR Ready: Camera feed active');
+          log('AR System Ready');
         });
 
       } catch (err) {
-        $top.textContent = 'خطا در بارگذاری';
-        log('Error: ' + err.message);
+        log('Init error: ' + err.message);
       }
     }
 
-    initAR();
+    $startBtn.addEventListener('click', () => {
+      $overlay.style.display = 'none';
+      buildScene();
+      const mindarSystem = sceneEl.systems['mindar-image-system'];
+      if (mindarSystem) {
+        mindarSystem.start();
+      }
+    });
   </script>
 </body>
 </html>
