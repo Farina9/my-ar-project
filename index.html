@@ -1,65 +1,140 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="fa">
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
-    <style>
-        body, html { margin: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
-    #msg { position: fixed; top: 10px; width: 100%; text-align: center; z-index: 1000; color: white; font-family: sans-serif; background: rgba(0,0,0,0.5); padding: 10px 0; }
-    #error-log { position: fixed; bottom: 10px; left: 10px; color: red; font-size: 10px; z-index: 2000; background: white; }
-    /* این کد بخش سیاه را حذف می‌کند */
-    .mindar-ui-overlay { display: none !important; }
-    </style>
-</head>
-<body>
-    <div id="msg">در حال بارگذاری... دوربین را به سمت تصویر بگیرید</div>
-    <div id="error-log"></div>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <title>WebAR</title>
 
-    <a-scene  mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; uiLoading: no; uiError: no; uiScanning: no;" 
-    color-space="sRGB" 
-    renderer="colorManagement: true, physicallyCorrectLights: true" 
-    vr-mode-ui="enabled: false" 
+  <script src="https://af.2/aframe.4.2/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: sans-serif;
+    }
+
+    /* a-scene تمام صفحه */
+    a-scene {
+      position: fixed !important;
+      inset: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      overflow: hidden !important;
+      background: #000 !important;
+    }
+
+    /* canvas و ویدئوی دوربین تمام صفحه */
+    canvas, video {
+      position: absolute !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important;  /* مهم: سیاهی پایین را حذف می‌کند */
+    }
+
+    #topbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 9999;
+      padding: 10px 12px;
+      color: #fff;
+      background: rgba(0,0,0,0.45);
+      text-align: center;
+      font-size: 14px;
+      backdrop-filter: blur(4px);
+    }
+
+    #log {
+      position: fixed;
+      left: 8px;
+      right: 8px;
+      bottom: 8px;
+      z-index: 9999;
+      max-height: 35vh;
+      overflow: auto;
+      background: rgba(0,0,0,0.6);
+      color: #ffdddd;
+      padding: 8px 10px;
+      font-size: 12px;
+      line-height: 1.4;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      direction: ltr; /* برای خوانایی URLها */
+      white-space: pre-wrap;
+    }
+
+    #hint {
+      position: fixed;
+      inset: auto 0 55px 0;
+      z-index: 9999;
+      text-align: center;
+      color: #fff;
+      font-size: 12px;
+      opacity: 0.9;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="topbar">در حال آماده‌سازی… اگر پیام خطا دیدید، از پایین صفحه عکس بگیرید.</div>
+  <div id="hint">اگر دوربین اجازه می‌خواهد: Allow را بزنید. (بهتر: Chrome/Android)</div>
+  <div id="log"></div>
+
+  <a-scene
+    mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; filterMinCF: 0.001; filterBeta: 1000;"
+    vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false"
-    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
-    
+    renderer="colorManagement: true, physicallyCorrectLights: true"
+  >
+    <a-assets timeout="10000"></a-assets>
+
     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
     <a-entity id="root"></a-entity>
-    </a-scene>
+  </a-scene>
 
-    <script>
-        const log = (txt) => { document.getElementById('error-log').innerHTML += txt + '<br>'; };
-        
-        fetch('./config.json')
-            .then(response => {
-                if (!response.ok) throw new Error('فایل config.json پیدا نشد!');
-                return response.json();
-            })
-            .then(CONFIG => {
-                const root = document.getElementById('root');
-                document.getElementById('msg').innerText = "آماده! دوربین را به سمت تصویر بگیرید";
+  <script>
+    const $top = document.getElementById('topbar');
+    const $log = document.getElementById('log');
+    const log = (...args) => {
+      const msg = args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+      console.log(msg);
+      $log.textContent += msg + "\n";
+      $log.scrollTop = $log.scrollHeight;
+    };
 
-                (CONFIG.models || []).forEach(([idx, path, scale, pos, autoRot]) => {
-                    const anchor = document.createElement('a-entity');
-                    anchor.setAttribute('mindar-image-target', `targetIndex: ${idx}`);
-                    
-                    const model = document.createElement('a-gltf-model');
-                    model.setAttribute('src', path);
-                    model.setAttribute('scale', scale);
-                    model.setAttribute('position', pos);
-                    
-                    if(autoRot) {
-                        model.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 5000; easing: linear');
-                    }
+    // نمایش خطاهای کلی JS
+    window.addEventListener('error', (e) => log('[window.error]', e.message));
+    window.addEventListener('unhandledrejection', (e) => log('[promise]', e.reason?.message || e.reason));
 
-                    anchor.appendChild(model);
-                    root.appendChild(anchor);
-                    
-                    // تست لود شدن مدل
-                    model.addEventListener('model-error', () => log("خطا در بارگذاری مدل: " + path));
-                });
-            })
-            .catch(err => log("خطای کلی: " + err.message));
-    </script>
-</body>
-</html>
+    async function mustFetch(url, kind) {
+      log(`Fetching ${kind}: ${url}`);
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`${kind} not found (${res.status}): ${url}`);
+      return res;
+    }
+
+    async function init() {
+      try {
+        // 1) چک targets.mind
+        await mustFetch('./assets/targets.mind', 'targets.mind');
+
+        // 2) چک config.json
+        const cfgRes = await mustFetch('./config.json', 'config.json');
+        const cfg = await cfgRes.json();
+
+        log('config.json loaded OK');
+
+        const sceneEl = document.querySelector('a-scene');
+        const root = document.getElementById('root');
+
+        // رویدادهای MindAR
+        sceneEl.addEventListener('loaded', () => log('[A-Frame] scene loaded'));
+        sceneEl.addEventListener('renderstart', () 
