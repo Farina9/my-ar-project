@@ -56,12 +56,11 @@
       min-width: 180px;
       padding: 10px 18px;
       color: #fff;
-      background: rgba(0, 0, 0, 0.7);
+      background: rgba(0, 0, 0, 0.75);
       border-radius: 22px;
       text-align: center;
       font-size: 15px;
       pointer-events: none;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
 
     #sound-btn {
@@ -78,7 +77,6 @@
       font-size: 14px;
       font-weight: bold;
       cursor: pointer;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     }
 
     #sound-btn.unmuted {
@@ -97,7 +95,7 @@
       overflow-y: auto;
       direction: ltr;
       color: #00ff88;
-      background: rgba(0, 0, 0, 0.8);
+      background: rgba(0, 0, 0, 0.85);
       font: 11px/1.3 monospace;
       text-align: left;
       border-radius: 6px;
@@ -128,10 +126,6 @@
       font-weight: bold;
       cursor: pointer;
     }
-
-    #start-btn:active {
-      transform: scale(0.97);
-    }
   </style>
 </head>
 
@@ -160,8 +154,6 @@
       maxTrack: 2;
     "
   >
-    <a-assets id="assets-container"></a-assets>
-
     <a-camera position="0 0 0" look-controls="enabled: false" wasd-controls="enabled: false"></a-camera>
 
     <a-entity id="main-root"></a-entity>
@@ -171,41 +163,40 @@
     const logBox = document.getElementById('log');
     const topbar = document.getElementById('topbar');
     const root = document.getElementById('main-root');
-    const assets = document.getElementById('assets-container');
     const soundButton = document.getElementById('sound-btn');
     const startScreen = document.getElementById('start-screen');
     const startMsg = document.getElementById('start-msg');
     const startBtn = document.getElementById('start-btn');
 
-    const videoElements = [];
+    const activeVideos = [];
     let isUserUnmuted = false;
 
-    function log(message) {
-      logBox.textContent += message + '\n';
+    function log(msg) {
+      logBox.textContent += msg + '\n';
       logBox.scrollTop = logBox.scrollHeight;
-      console.log(message);
+      console.log(msg);
     }
 
-    function setStatus(message) {
-      topbar.textContent = message;
+    function setStatus(msg) {
+      topbar.textContent = msg;
     }
 
-    function markCameraVideo(video) {
-      if (!video) return;
-      video.setAttribute('data-mindar-video', '');
-      video.style.position = 'fixed';
-      video.style.left = '0';
-      video.style.top = '0';
-      video.style.width = '100vw';
-      video.style.height = '100vh';
-      video.style.objectFit = 'cover';
-      video.style.zIndex = '0';
+    function markCameraVideo(v) {
+      if (!v) return;
+      v.setAttribute('data-mindar-video', '');
+      v.style.position = 'fixed';
+      v.style.left = '0';
+      v.style.top = '0';
+      v.style.width = '100vw';
+      v.style.height = '100vh';
+      v.style.objectFit = 'cover';
+      v.style.zIndex = '0';
     }
 
     function fixCameraDOM() {
       const allVideos = document.querySelectorAll('video');
       allVideos.forEach((v) => {
-        if (v.srcObject && !v.id.startsWith('video-asset-')) {
+        if (v.srcObject && !v.dataset.arVideo) {
           markCameraVideo(v);
         }
       });
@@ -239,18 +230,18 @@
       isUserUnmuted = !isUserUnmuted;
       updateSoundButtonUI();
 
-      videoElements.forEach((video) => {
-        video.muted = !isUserUnmuted;
+      activeVideos.forEach((item) => {
+        item.video.muted = !isUserUnmuted;
       });
-      log('Sound state changed: ' + (isUserUnmuted ? 'Unmuted' : 'Muted'));
+      log('Sound toggled: ' + (isUserUnmuted ? 'ON' : 'OFF'));
     });
 
     async function startAR() {
       try {
-        log('Loading configuration...');
+        log('Loading config...');
         const config = await loadConfig();
 
-        // 1. بارگذاری مدل‌ها
+        // 1. مدل‌های سه‌بعدی
         if (Array.isArray(config.models)) {
           config.models.forEach((item) => {
             const [index, path, scale, position] = item;
@@ -270,38 +261,60 @@
           });
         }
 
-        // 2. بارگذاری ویدیوها
+        // 2. ویدیوها (رندر مستقیم با Three.js VideoTexture)
         if (Array.isArray(config.videos)) {
           config.videos.forEach((item, i) => {
-            const [index, path, scale, position] = item;
-            const videoId = 'video-asset-' + i;
+            const [index, path, scaleStr, posStr] = item;
 
             const video = document.createElement('video');
-            video.id = videoId;
+            video.dataset.arVideo = "true";
             video.src = path;
             video.loop = true;
             video.muted = true;
             video.playsInline = true;
             video.setAttribute('playsinline', '');
             video.setAttribute('webkit-playsinline', '');
-            video.setAttribute('crossorigin', 'anonymous');
+            video.crossOrigin = 'anonymous';
             video.preload = 'auto';
-
-            assets.appendChild(video);
-            videoElements.push(video);
 
             const anchor = document.createElement('a-entity');
             anchor.setAttribute('mindar-image-target', `targetIndex: ${index}`);
 
-            const plane = document.createElement('a-plane');
-            plane.setAttribute('material', `src: #${videoId}; shader: flat; side: double; transparent: false;`);
-            plane.setAttribute('width', '1');
-            plane.setAttribute('height', '0.5625');
-            plane.setAttribute('scale', scale || '1 1 1');
-            plane.setAttribute('position', position || '0 0 0');
-
-            anchor.appendChild(plane);
+            const planeEntity = document.createElement('a-entity');
+            anchor.appendChild(planeEntity);
             root.appendChild(anchor);
+
+            let texture = null;
+            let mesh = null;
+
+            planeEntity.addEventListener('loaded', () => {
+              texture = new THREE.VideoTexture(video);
+              texture.minFilter = THREE.LinearFilter;
+              texture.magFilter = THREE.LinearFilter;
+              texture.format = THREE.RGBAFormat;
+
+              const geometry = new THREE.PlaneGeometry(1, 0.5625);
+              const material = new THREE.MeshBasicMaterial({
+                map: texture,
+                side: THREE.DoubleSide
+              });
+
+              mesh = new THREE.Mesh(geometry, material);
+              
+              if (scaleStr) {
+                const s = scaleStr.split(' ').map(Number);
+                if (s.length === 3) mesh.scale.set(s[0], s[1], s[2]);
+              }
+              if (posStr) {
+                const p = posStr.split(' ').map(Number);
+                if (p.length === 3) mesh.position.set(p[0], p[1], p[2]);
+              }
+
+              planeEntity.setObject3D('mesh', mesh);
+            });
+
+            const videoRecord = { index, video, anchor };
+            activeVideos.push(videoRecord);
 
             anchor.addEventListener('targetFound', async () => {
               setStatus('ویدیو شناسایی شد');
@@ -311,9 +324,9 @@
               video.muted = !isUserUnmuted;
               try {
                 await video.play();
-                log('Video playing smoothly.');
+                log('Video playing...');
               } catch (err) {
-                log('Play error: ' + err.message);
+                log('Video play error: ' + err.message);
               }
             });
 
@@ -325,22 +338,20 @@
           });
         }
 
-        // فعال‌سازی با یک بار پخش و توقف همه ویدیوها داخل رویداد کاربر
-        for (const v of videoElements) {
+        // قفل‌گشایی پخش ویدیوها
+        for (const item of activeVideos) {
           try {
-            await v.play();
-            v.pause();
-            v.currentTime = 0;
-          } catch (e) {
-            // هندل خودکار
-          }
+            await item.video.play();
+            item.video.pause();
+            item.video.currentTime = 0;
+          } catch (e) {}
         }
 
         startScreen.remove();
 
         const scene = document.querySelector('a-scene');
         const mindarSystem = scene.systems['mindar-image-system'];
-        if (!mindarSystem) throw new Error('MindAR system is not available.');
+        if (!mindarSystem) throw new Error('MindAR system unavailable');
 
         scene.addEventListener('arReady', () => {
           setStatus('دوربین فعال شد - تصویر را روبروی دوربین بگیرید');
@@ -360,7 +371,7 @@
 
     startBtn.addEventListener('click', () => {
       startBtn.style.display = 'none';
-      startMsg.textContent = 'در حال راه‌اندازی و باز کردن دوربین...';
+      startMsg.textContent = 'در حال راه‌اندازی دوربین...';
       startAR();
     });
   </script>
