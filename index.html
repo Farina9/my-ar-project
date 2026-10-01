@@ -3,247 +3,119 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>WebAR Experience</title>
-
+  <title>AR Experience - Dual Mode</title>
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
-
   <style>
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0; padding: 0;
-      width: 100vw; height: 100vh;
-      overflow: hidden;
-      background: transparent !important;
-      font-family: system-ui, -apple-system, sans-serif;
-    }
-
-    video:not(.ar-media-video) {
-      position: fixed !important;
-      top: 0 !important; left: 0 !important;
-      width: 100vw !important; height: 100vh !important;
-      object-fit: cover !important;
-      z-index: 1 !important;
-      display: block !important;
-    }
-
-    a-scene {
-      position: fixed !important;
-      top: 0 !important; left: 0 !important;
-      width: 100vw !important; height: 100vh !important;
-      z-index: 2 !important;
-    }
-
-    #topbar {
-      position: fixed;
-      top: 14px; left: 50%;
-      transform: translateX(-50%);
-      z-index: 100;
-      padding: 10px 20px;
-      color: #ffffff;
-      background: rgba(0, 0, 0, 0.7);
-      text-align: center;
-      font-size: 14px;
-      border-radius: 25px;
-      backdrop-filter: blur(6px);
-      white-space: nowrap;
-      pointer-events: none;
-    }
-
-    #log {
-      position: fixed;
-      bottom: 10px; left: 10px; right: 10px;
-      max-height: 90px;
-      overflow-y: auto;
-      background: rgba(0, 0, 0, 0.8);
-      color: #00ff66;
-      font-family: monospace;
-      font-size: 11px;
-      padding: 8px;
-      border-radius: 8px;
-      z-index: 100;
-      direction: ltr;
-      white-space: pre-wrap;
-    }
-
-    #start-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(15, 23, 42, 0.95);
-      z-index: 999;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      text-align: center;
-      padding: 20px;
-    }
-
-    #start-btn {
-      margin-top: 20px;
-      padding: 14px 32px;
-      font-size: 16px;
-      font-weight: bold;
-      color: #fff;
-      background: #2563eb;
-      border: none;
-      border-radius: 30px;
-      cursor: pointer;
-    }
+    body { margin: 0; overflow: hidden; background: #000; }
+    #topbar { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 100; padding: 10px 20px; color: white; background: rgba(0,0,0,0.6); border-radius: 20px; font-family: sans-serif; pointer-events: none; }
+    #log { position: fixed; bottom: 10px; left: 10px; right: 10px; height: 80px; background: rgba(0,0,0,0.8); color: #0f6; font-family: monospace; font-size: 10px; padding: 5px; overflow-y: auto; z-index: 100; }
+    #start-screen { position: fixed; inset: 0; z-index: 999; background: #111; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    button { padding: 15px 30px; font-size: 18px; cursor: pointer; border-radius: 30px; border: none; background: #2563eb; color: white; font-weight: bold; }
   </style>
 </head>
-
 <body>
-  <div id="start-overlay">
-    <h2>سامانه واقعیت افزوده</h2>
-    <p>برای فعال‌سازی صدا و دوربین، دکمه زیر را بزنید.</p>
-    <button id="start-btn">شروع تجربه</button>
+
+  <div id="start-screen">
+    <button id="start-btn">شروع تجربه واقعیت افزوده</button>
   </div>
 
-  <div id="topbar">دوربین را به سمت تصویر بگیرید...</div>
+  <div id="topbar">در انتظار دوربین...</div>
   <div id="log"></div>
 
-  <a-scene
-    mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: false; uiLoading: no; uiError: no; filterMinCF: 0.0001; filterBeta: 0.001;"
-    color-space="sRGB"
-    embedded
-    renderer="colorManagement: true, alpha: true, antialias: true"
-    vr-mode-ui="enabled: false"
-    device-orientation-permission-ui="enabled: false"
-  >
+  <a-scene 
+    mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: false; uiLoading: no;" 
+    embedded vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+    
+    <a-assets id="assets-container"></a-assets>
     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-    <a-entity id="root"></a-entity>
+    <a-entity id="main-root"></a-entity>
   </a-scene>
 
   <script>
-    const $top = document.getElementById('topbar');
     const $log = document.getElementById('log');
-    const $overlay = document.getElementById('start-overlay');
-    const $startBtn = document.getElementById('start-btn');
-    const sceneEl = document.querySelector('a-scene');
+    const $top = document.getElementById('topbar');
+    const $root = document.getElementById('main-root');
+    const $assets = document.getElementById('assets-container');
 
-    function log(msg) {
-      console.log(msg);
-      $log.textContent += msg + "\n";
-      $log.scrollTop = $log.scrollHeight;
-    }
+    function log(m) { $log.innerText += m + "\n"; $log.scrollTop = $log.scrollHeight; }
 
-    window.onerror = (msg, url, line) => log(`[Err] ${msg}:${line}`);
-
-    async function initAR() {
+    async function startAR() {
       try {
-        log('Reading config.json...');
-        let cfg = { models: [] };
-        try {
-          const res = await fetch('./config.json', { cache: 'no-store' });
-          if (res.ok) cfg = await res.json();
-        } catch (e) {
-          log('Config fetch failed');
-        }
-
-        const root = document.getElementById('root');
-        const items = cfg.models || [];
-        log(`Found ${items.length} item(s) in config`);
-
-        items.forEach((item, index) => {
-          const [idx, path, scale, pos, autoRot] = item;
-          const isVideo = path.toLowerCase().endsWith('.mp4') || path.toLowerCase().endsWith('.webm');
-
-          const anchor = document.createElement('a-entity');
-          anchor.setAttribute('mindar-image-target', `targetIndex: ${idx}`);
-
-          if (isVideo) {
-            // ساخت مستقیم تگ ویدیو در حافظه
-            const vid = document.createElement('video');
-            vid.src = path;
-            vid.crossOrigin = 'anonymous';
-            vid.playsInline = true;
-            vid.webkitPlaysInline = true;
-            vid.loop = true;
-            vid.muted = true; // ابتدا بی‌صدا تا بلاک نشود
-            vid.load();
-
-            // ساخت پلن ساده سه‌بعدی
-            const plane = document.createElement('a-plane');
-            plane.setAttribute('width', '1');
-            plane.setAttribute('height', '0.5625');
-            plane.setAttribute('position', pos || '0 0 0');
-            plane.setAttribute('scale', scale || '1 1 1');
-            plane.setAttribute('material', 'shader: flat; side: double');
-
-            // وصل کردن بافت ویدیو به متریال پلن
-            const mesh = plane.getObject3D('mesh');
-            const texture = new THREE.VideoTexture(vid);
-            texture.minFilter = THREE.LinearFilter;
-            texture.magFilter = THREE.LinearFilter;
-            plane.addEventListener('loaded', () => {
-              plane.getObject3D('mesh').material.map = texture;
-              plane.getObject3D('mesh').material.needsUpdate = true;
-            });
-
-            anchor.appendChild(plane);
-
-            anchor.addEventListener('targetFound', () => {
-              $top.textContent = `تارگت ${idx} شناسایی شد (ویدیو)`;
-              log(`Target ${idx} FOUND! Playing video...`);
-              vid.play().then(() => {
-                log('Video playing smoothly');
-              }).catch(e => {
-                log('Play warning: ' + e.message);
-              });
-            });
-
-            anchor.addEventListener('targetLost', () => {
-              $top.textContent = 'دوربین را به سمت تصویر بگیرید...';
-              log(`Target ${idx} lost`);
-              vid.pause();
-            });
-
-          } else {
-            // ساخت مدل سه‌بعدی
+        log("Loading config.json...");
+        const res = await fetch('./config.json?v=' + Math.random());
+        const cfg = await res.json();
+        
+        // ۱. پردازش مدل‌ها
+        if(cfg.models) {
+          cfg.models.forEach(m => {
+            const [idx, path, scale, pos, rot] = m;
+            const anchor = document.createElement('a-entity');
+            anchor.setAttribute('mindar-image-target', `targetIndex: ${idx}`);
+            
             const model = document.createElement('a-gltf-model');
             model.setAttribute('src', path);
-            if (scale) model.setAttribute('scale', scale);
-            if (pos) model.setAttribute('position', pos);
-            if (autoRot) {
-              model.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 6000; easing: linear');
-            }
-
+            model.setAttribute('scale', scale || "1 1 1");
+            model.setAttribute('position', pos || "0 0 0");
+            if(rot) model.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 8000; easing: linear');
+            
             anchor.appendChild(model);
+            $root.appendChild(anchor);
+            
+            anchor.addEventListener('targetFound', () => { $top.innerText = "مدل شناسایی شد"; log("Model Found: " + idx); });
+          });
+        }
+
+        // ۲. پردازش ویدیوها
+        if(cfg.videos) {
+          cfg.videos.forEach((v, i) => {
+            const [idx, path, scale, pos] = v;
+            const anchor = document.createElement('a-entity');
+            anchor.setAttribute('mindar-image-target', `targetIndex: ${idx}`);
+            
+            // ساخت ویدیو
+            const videoId = `vid-${i}`;
+            const videoEl = document.createElement('video');
+            videoEl.id = videoId;
+            videoEl.src = path;
+            videoEl.loop = true;
+            videoEl.crossOrigin = "anonymous";
+            videoEl.setAttribute('playsinline', '');
+            $assets.appendChild(videoEl);
+
+            const plane = document.createElement('a-plane');
+            plane.setAttribute('src', `#${videoId}`);
+            plane.setAttribute('width', '1');
+            plane.setAttribute('height', '0.56');
+            plane.setAttribute('scale', scale || "1 1 1");
+            plane.setAttribute('position', pos || "0 0 0");
+            
+            anchor.appendChild(plane);
+            $root.appendChild(anchor);
 
             anchor.addEventListener('targetFound', () => {
-              $top.textContent = `تارگت ${idx} شناسایی شد (مدل)`;
-              log(`Target ${idx} FOUND! (3D Model)`);
+              $top.innerText = "ویدیو شناسایی شد";
+              log("Video Found: " + idx);
+              videoEl.play().catch(e => log("Play Error: " + e.message));
             });
+            anchor.addEventListener('targetLost', () => videoEl.pause());
+          });
+        }
 
-            anchor.addEventListener('targetLost', () => {
-              $top.textContent = 'دوربین را به سمت تصویر بگیرید...';
-              log(`Target ${idx} lost`);
-            });
-          }
+        const scene = document.querySelector('a-scene');
+        scene.systems['mindar-image-system'].start();
+        log("AR System Started.");
 
-          root.appendChild(anchor);
-        });
-
-        sceneEl.addEventListener('arReady', () => {
-          $top.textContent = 'آماده! دوربین را به سمت تصویر بگیرید.';
-          log('AR Tracker is Active');
-        });
-
-      } catch (err) {
-        log('Init error: ' + err.message);
+      } catch (e) {
+        log("Global Error: " + e.message);
       }
     }
 
-    $startBtn.addEventListener('click', async () => {
-      $overlay.style.display = 'none';
-      await initAR();
-      const mindarSystem = sceneEl.systems['mindar-image-system'];
-      if (mindarSystem) {
-        mindarSystem.start();
-      }
+    document.getElementById('start-btn').addEventListener('click', () => {
+      document.getElementById('start-screen').remove();
+      startAR();
     });
   </script>
 </body>
 </html>
+
