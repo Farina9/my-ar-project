@@ -3,9 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-  <title>WebAR</title>
+  <title>WebAR Experience</title>
 
-  <script src="https://af.2/aframe.4.2/aframe.min.js"></script>
+  <!-- کتابخانه‌های اصلی و معتبر CDN -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
@@ -16,86 +17,88 @@
       height: 100%;
       overflow: hidden;
       background: #000;
-      font-family: sans-serif;
+      font-family: system-ui, -apple-system, sans-serif;
     }
 
-    /* a-scene تمام صفحه */
     a-scene {
       position: fixed !important;
       inset: 0 !important;
       width: 100vw !important;
       height: 100vh !important;
-      overflow: hidden !important;
       background: #000 !important;
     }
 
-    /* canvas و ویدئوی دوربین تمام صفحه */
     canvas, video {
       position: absolute !important;
       inset: 0 !important;
       width: 100% !important;
       height: 100% !important;
-      object-fit: cover !important;  /* مهم: سیاهی پایین را حذف می‌کند */
+      object-fit: cover !important;
     }
 
     #topbar {
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
+      top: 12px;
+      left: 12px;
+      right: 12px;
       z-index: 9999;
-      padding: 10px 12px;
+      padding: 12px;
       color: #fff;
-      background: rgba(0,0,0,0.45);
+      background: rgba(0, 0, 0, 0.7);
       text-align: center;
       font-size: 14px;
-      backdrop-filter: blur(4px);
+      border-radius: 10px;
+      backdrop-filter: blur(5px);
+    }
+
+    #start-btn {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 10000;
+      padding: 16px 32px;
+      font-size: 16px;
+      font-weight: bold;
+      color: #fff;
+      background: #2563eb;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
     }
 
     #log {
       position: fixed;
-      left: 8px;
-      right: 8px;
-      bottom: 8px;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
       z-index: 9999;
-      max-height: 35vh;
+      max-height: 25vh;
       overflow: auto;
-      background: rgba(0,0,0,0.6);
-      color: #ffdddd;
-      padding: 8px 10px;
-      font-size: 12px;
-      line-height: 1.4;
-      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(0, 0, 0, 0.8);
+      color: #00ff88;
+      padding: 10px;
+      font-size: 11px;
+      font-family: monospace;
       border-radius: 8px;
-      direction: ltr; /* برای خوانایی URLها */
+      direction: ltr;
       white-space: pre-wrap;
-    }
-
-    #hint {
-      position: fixed;
-      inset: auto 0 55px 0;
-      z-index: 9999;
-      text-align: center;
-      color: #fff;
-      font-size: 12px;
-      opacity: 0.9;
     }
   </style>
 </head>
 
 <body>
-  <div id="topbar">در حال آماده‌سازی… اگر پیام خطا دیدید، از پایین صفحه عکس بگیرید.</div>
-  <div id="hint">اگر دوربین اجازه می‌خواهد: Allow را بزنید. (بهتر: Chrome/Android)</div>
+  <div id="topbar">در حال آماده‌سازی سیستم... روی دکمه شروع کلیک کنید.</div>
+  <button id="start-btn" onclick="startAR()">شروع دوربین و واقعیت افزوده</button>
   <div id="log"></div>
 
   <a-scene
-    mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; filterMinCF: 0.001; filterBeta: 1000;"
+    mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: false; uiLoading: no; uiError: no;"
     vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false"
     renderer="colorManagement: true, physicallyCorrectLights: true"
   >
-    <a-assets timeout="10000"></a-assets>
-
     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
     <a-entity id="root"></a-entity>
   </a-scene>
@@ -103,38 +106,89 @@
   <script>
     const $top = document.getElementById('topbar');
     const $log = document.getElementById('log');
-    const log = (...args) => {
-      const msg = args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+    const $btn = document.getElementById('start-btn');
+
+    function log(msg) {
       console.log(msg);
       $log.textContent += msg + "\n";
       $log.scrollTop = $log.scrollHeight;
-    };
-
-    // نمایش خطاهای کلی JS
-    window.addEventListener('error', (e) => log('[window.error]', e.message));
-    window.addEventListener('unhandledrejection', (e) => log('[promise]', e.reason?.message || e.reason));
-
-    async function mustFetch(url, kind) {
-      log(`Fetching ${kind}: ${url}`);
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`${kind} not found (${res.status}): ${url}`);
-      return res;
     }
 
-    async function init() {
+    window.onerror = (msg, url, line) => log(`[Error] ${msg} (Line ${line})`);
+
+    async function startAR() {
+      $btn.style.display = 'none';
+      $top.textContent = 'در حال فعال‌سازی دوربین...';
+
       try {
-        // 1) چک targets.mind
-        await mustFetch('./assets/targets.mind', 'targets.mind');
+        // 1. بررسی فایل targets.mind
+        log('Checking targets.mind...');
+        const tRes = await fetch('./assets/targets.mind', { method: 'HEAD' });
+        if (!tRes.ok) throw new Error('فایل targets.mind در پوشه assets یافت نشد (404)');
 
-        // 2) چک config.json
-        const cfgRes = await mustFetch('./config.json', 'config.json');
-        const cfg = await cfgRes.json();
+        // 2. بارگذاری config.json
+        log('Loading config.json...');
+        let cfg = { models: [] };
+        try {
+          const cRes = await fetch('./config.json');
+          if (cRes.ok) cfg = await cRes.json();
+        } catch (e) {
+          log('Warning: config.json not found, loading default.');
+        }
 
-        log('config.json loaded OK');
-
-        const sceneEl = document.querySelector('a-scene');
+        // 3. افزودن مدل‌ها به صحنه
         const root = document.getElementById('root');
+        const models = cfg.models || [];
+        
+        models.forEach((item) => {
+          const [idx, path, scale, pos, autoRot] = item;
+          const anchor = document.createElement('a-entity');
+          anchor.setAttribute('mindar-image-target', `targetIndex: ${idx}`);
 
-        // رویدادهای MindAR
-        sceneEl.addEventListener('loaded', () => log('[A-Frame] scene loaded'));
-        sceneEl.addEventListener('renderstart', () 
+          anchor.addEventListener('targetFound', () => {
+            $top.textContent = `تارگت ${idx} شناسایی شد!`;
+            log(`Target ${idx} Found`);
+          });
+
+          anchor.addEventListener('targetLost', () => {
+            $top.textContent = 'دوربین را به سمت تصویر بگیرید...';
+            log(`Target ${idx} Lost`);
+          });
+
+          const model = document.createElement('a-gltf-model');
+          model.setAttribute('src', path);
+          if (scale) model.setAttribute('scale', scale);
+          if (pos) model.setAttribute('position', pos);
+          if (autoRot) {
+            model.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 6000; easing: linear');
+          }
+
+          anchor.appendChild(model);
+          root.appendChild(anchor);
+        });
+
+        // 4. استارت سیستم AR
+        const sceneEl = document.querySelector('a-scene');
+        const arSystem = sceneEl.systems['mindar-image-system'];
+        
+        sceneEl.addEventListener('arReady', () => {
+          $top.textContent = 'آماده! دوربین را به سمت تصویر بگیرید.';
+          log('MindAR Ready');
+        });
+
+        sceneEl.addEventListener('arError', (err) => {
+          $top.textContent = 'خطا در اجرای دوربین.';
+          log('AR Error: ' + JSON.stringify(err));
+        });
+
+        await arSystem.start();
+        log('AR System started successfully.');
+
+      } catch (err) {
+        $top.textContent = 'خطا در بارگذاری!';
+        log('FATAL: ' + err.message);
+      }
+    }
+  </script>
+</body>
+</html>
