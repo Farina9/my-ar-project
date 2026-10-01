@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>AR Experience</title>
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: Tahoma, sans-serif; }
+    #msg { position: fixed; top: 15px; left: 50%; transform: translateX(-50%); z-index: 999; background: rgba(0,0,0,0.7); color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 13px; }
+    #soundBtn { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 999; background: #2563eb; color: #fff; border: none; padding: 10px 20px; border-radius: 20px; font-weight: bold; display: none; }
+  </style>
+</head>
+<body>
+  <div id="msg">دوربین را به سمت تصویر بگیرید...</div>
+  <button id="soundBtn">🔊 پخش صدا</button>
+
+  <a-scene mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true;" embedded color-space="sRGB" renderer="colorManagement: true" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+    <a-entity id="root"></a-entity>
+  </a-scene>
+
+  <script>
+    AFRAME.registerComponent('interactive-model', {
+      schema: { autoRotate: { type: 'boolean', default: false } },
+      init: function () {
+        let isDragging = false, prev = { x: 0, y: 0 };
+        window.addEventListener('touchstart', (e) => { if(e.touches.length===1){ isDragging = true; prev = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }});
+        window.addEventListener('touchmove', (e) => {
+          if (!isDragging || e.touches.length !== 1) return;
+          const dx = e.touches[0].clientX - prev.x, dy = e.touches[0].clientY - prev.y;
+          const rot = this.el.getAttribute('rotation');
+          this.el.setAttribute('rotation', { x: rot.x + dy * 0.5, y: rot.y + dx * 0.5, z: rot.z });
+          prev = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        });
+        window.addEventListener('touchend', () => isDragging = false);
+        this.isDragging = () => isDragging;
+      },
+      tick: function () {
+        if (this.data.autoRotate && !this.isDragging()) {
+          const rot = this.el.getAttribute('rotation');
+          this.el.setAttribute('rotation', { x: rot.x, y: rot.y + 0.8, z: rot.z });
+        }
+      }
+    });
+
+    fetch('./config.json')
+      .then(res => res.json())
+      .then(CONFIG => {
+        const root = document.getElementById('root');
+        const soundBtn = document.getElementById('soundBtn');
+        let currentAudio = null, currentVideo = null;
+
+        function getAnchor(index) {
+          let anchor = document.getElementById(`target-${index}`);
+          if (!anchor) {
+            anchor = document.createElement('a-entity');
+            anchor.setAttribute('id', `target-${index}`);
+            anchor.setAttribute('mindar-image-target', `targetIndex: ${index}`);
+            root.appendChild(anchor);
+          }
+          return anchor;
+        }
+
+        (CONFIG.models || []).forEach(([idx, path, scale, pos, autoRot]) => {
+          const a = getAnchor(idx);
+          const m = document.createElement('a-gltf-model');
+          m.setAttribute('src', path);
+          m.setAttribute('scale', scale);
+          m.setAttribute('position', pos);
+          m.setAttribute('interactive-model', `autoRotate: ${autoRot}`);
+          a.appendChild(m);
+        });
+
+        (CONFIG.videos || []).forEach(([idx, path, scale, pos]) => {
+          const a = getAnchor(idx);
+          const v = document.createElement('video');
+          v.src = path; v.crossOrigin = 'anonymous'; v.playsInline = true; v.loop = true;
+          const mesh = document.createElement('a-video');
+          mesh.setAttribute('src', v);
+          mesh.setAttribute('scale', scale);
+          mesh.setAttribute('position', pos);
+          a.appendChild(mesh);
+          a.addEventListener('targetFound', () => { currentVideo = v; v.play().catch(() => soundBtn.style.display = 'block'); });
+          a.addEventListener('targetLost', () => { v.pause(); soundBtn.style.display = 'none'; });
+        });
+
+        soundBtn.addEventListener('click', () => {
+          if (currentVideo) currentVideo.play();
+          if (currentAudio) currentAudio.play();
+          soundBtn.style.display = 'none';
+        });
+      });
+  </script>
+</body>
+</html>

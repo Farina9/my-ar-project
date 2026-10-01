@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AR Studio Builder | ابزار ساخت WebAR بدون کد</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --accent: #3b82f6;
+      --text: #f8fafc;
+      --border: #334155;
+    }
+    body {
+      margin: 0;
+      padding: 20px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      box-sizing: border-box;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 25px;
+    }
+    .header h1 { margin: 0 0 8px 0; color: #60a5fa; font-size: 24px; }
+    .header p { margin: 0; color: #94a3b8; font-size: 14px; }
+
+    /* منطقه Drag & Drop */
+    .drop-zone {
+      border: 2px dashed #475569;
+      border-radius: 12px;
+      padding: 30px 20px;
+      text-align: center;
+      background: rgba(30, 41, 59, 0.5);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-bottom: 25px;
+    }
+    .drop-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(59, 130, 246, 0.1);
+      transform: scale(1.01);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      position: relative;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      margin-bottom: 12px;
+    }
+    .badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--accent);
+      font-weight: bold;
+    }
+    .btn-delete {
+      background: #ef4444;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .field {
+      margin-bottom: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+    }
+    .field label { color: #94a3b8; }
+    .field input, .field select {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .slider-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .slider-row input[type="range"] { flex: 1; }
+    
+    .actions {
+      position: sticky;
+      bottom: 20px;
+      margin-top: 30px;
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    .btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn-secondary { background: #334155; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>استودیوی ساخت WebAR بدون کد</h1>
+    <p>فایل‌های ۳بعدی (.glb/.gltf)، ویدیو (.mp4)، تصویر (.png/.jpg) یا صوت (.mp3) را اینجا رها کنید</p>
+  </div>
+
+  <!-- ناحیه Drag & Drop -->
+  <div class="drop-zone" id="dropZone">
+    <span style="font-size: 32px;">📁</span>
+    <p style="margin: 8px 0 0 0; font-weight: bold;">فایل‌ها را بکشید و اینجا رها کنید</p>
+    <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8;">یا برای انتخاب کلیک کنید</p>
+    <input type="file" id="fileInput" multiple style="display: none;">
+  </div>
+
+  <!-- لیست آیتم‌های اضافه شده -->
+  <div class="grid" id="itemsContainer"></div>
+
+  <!-- نوار عملیات خروجی -->
+  <div class="actions">
+    <button class="btn" onclick="exportConfig()">📥 دانلود فایل تنظیمات (config.json)</button>
+    <button class="btn btn-secondary" onclick="addLinkItem()">🔗 افزودن تارگت لینک/سایت</button>
+  </div>
+
+  <script>
+    const items = [];
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const container = document.getElementById('itemsContainer');
+
+    // مدیریت Drag & Drop
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      handleFiles(e.dataTransfer.files);
+    });
+    fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+    function handleFiles(files) {
+      Array.from(files).forEach((file) => {
+        const ext = file.name.split('.').pop().toLowerCase();
+        let type = 'unknown';
+
+        if (['glb', 'gltf'].includes(ext)) type = 'model';
+        else if (['mp4', 'webm'].includes(ext)) type = 'video';
+        else if (['mp3', 'wav', 'ogg'].includes(ext)) type = 'audio';
+        else if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) type = 'image';
+
+        if (type !== 'unknown') {
+          const item = {
+            id: Date.now() + Math.random(),
+            type: type,
+            fileName: `./assets/${file.name}`,
+            targetIndex: items.length,
+            scale: type === 'model' ? 0.5 : 1.0,
+            posX: 0, posY: 0, posZ: 0,
+            autoRotate: type === 'model',
+            url: ''
+          };
+          items.push(item);
+        }
+      });
+      renderItems();
+    }
+
+    function addLinkItem() {
+      items.push({
+        id: Date.now() + Math.random(),
+        type: 'link',
+        fileName: './assets/btn-visit.png',
+        targetIndex: items.length,
+        scale: 1.0,
+        posX: 0, posY: 0, posZ: 0,
+        autoRotate: false,
+        url: 'https://example.com'
+      });
+      renderItems();
+    }
+
+    function removeItem(id) {
+      const idx = items.findIndex(x => x.id === id);
+      if (idx !== -1) items.splice(idx, 1);
+      renderItems();
+    }
+
+    function renderItems() {
+      container.innerHTML = '';
+      items.forEach((item, index) => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="card-header">
+            <span class="badge">${item.type.toUpperCase()}</span>
+            <span style="font-size: 12px; color: #cbd5e1;">${item.fileName}</span>
+            <button class="btn-delete" onclick="removeItem(${item.id})">حذف</button>
+          </div>
+          
+          <div class="field">
+            <label>شماره تارگت (Target Index در فایل mind):</label>
+            <input type="number" min="0" value="${item.targetIndex}" onchange="items[${index}].targetIndex = parseInt(this.value)">
+          </div>
+
+          <div class="field">
+            <label>مقیاس (Scale): <span id="scaleVal-${item.id}">${item.scale}</span></label>
+            <div class="slider-row">
+              <input type="range" min="0.1" max="3" step="0.05" value="${item.scale}" 
+                oninput="items[${index}].scale = parseFloat(this.value); document.getElementById('scaleVal-${item.id}').innerText = this.value;">
+            </div>
+          </div>
+
+          ${item.type === 'model' ? `
+            <div class="field" style="flex-direction: row; align-items: center; gap: 8px;">
+              <input type="checkbox" id="rot-${item.id}" ${item.autoRotate ? 'checked' : ''} onchange="items[${index}].autoRotate = this.checked">
+              <label for="rot-${item.id}" style="color: #fff; cursor: pointer;">چرخش خودکار (Auto-Rotate)</label>
+            </div>
+          ` : ''}
+
+          ${item.type === 'link' ? `
+            <div class="field">
+              <label>آدرس اینترنتی مقصد (URL):</label>
+              <input type="text" value="${item.url}" onchange="items[${index}].url = this.value">
+            </div>
+          ` : ''}
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function exportConfig() {
+      const configData = {
+        models: items.filter(x => x.type === 'model').map(x => [x.targetIndex, x.fileName, `${x.scale} ${x.scale} ${x.scale}`, `${x.posX} ${x.posY} ${x.posZ}`, x.autoRotate]),
+        videos: items.filter(x => x.type === 'video').map(x => [x.targetIndex, x.fileName, `${x.scale} ${x.scale} ${x.scale}`, `${x.posX} ${x.posY} ${x.posZ}`]),
+        audios: items.filter(x => x.type === 'audio').map(x => [x.targetIndex, x.fileName, './assets/cover.png', `${x.scale} ${x.scale} ${x.scale}`, `${x.posX} ${x.posY} ${x.posZ}`]),
+        images: items.filter(x => x.type === 'image').map(x => [x.targetIndex, x.fileName, `${x.scale} ${x.scale} ${x.scale}`, `${x.posX} ${x.posY} ${x.posZ}`]),
+        links: items.filter(x => x.type === 'link').map(x => [x.targetIndex, x.url, x.fileName, `${x.scale} ${x.scale * 0.4} ${x.scale}`, `${x.posX} ${x.posY} ${x.posZ}`])
+      };
+
+      const blob = new Blob([JSON.stringify(configData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'config.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>

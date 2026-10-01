@@ -1,0 +1,22 @@
+{
+  "models": [
+    [
+      0,
+      "./assets/model1.glb",
+      "0.5 0.5 0.5",
+      "0 0 0",
+      true
+    ]
+  ],
+  "videos": [
+    [
+      1,
+      "./assets/video1.mp4",
+      "1 1 1",
+      "0 0 0"
+    ]
+  ],
+  "audios": [],
+  "images": [],
+  "links": []
+}
