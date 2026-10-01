@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>واقعیت افزوده</title>
 
-  <!-- بارگذاری CDNها -->
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
 
@@ -13,21 +12,36 @@
     * { box-sizing: border-box; }
     html, body {
       width: 100%; height: 100%; margin: 0; padding: 0;
-      overflow: hidden; background: #101318; font-family: sans-serif;
+      overflow: hidden; background: transparent !important;
+      font-family: sans-serif;
     }
+
+    /* صحنه واقعیت افزوده باید کاملاً شفاف باشد تا وب‌کم زیر آن دیده شود */
     a-scene {
       position: fixed !important; inset: 0 !important;
-      width: 100% !important; height: 100% !important; z-index: 1 !important;
-    }
-    video[data-ar-camera="true"] {
-      position: fixed !important; inset: 0 !important;
       width: 100vw !important; height: 100vh !important;
-      object-fit: cover !important; z-index: 0 !important;
+      z-index: 2 !important;
+      background: transparent !important;
     }
+
+    /* استایل اختصاصی برای ویدئوی پس‌زمینه وب‌کم */
+    .ar-camera-feed {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      object-fit: cover !important;
+      z-index: 1 !important;
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
+
     #start-overlay {
       position: fixed; inset: 0; z-index: 999999;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      padding: 20px; color: white; background: #101318; text-align: center;
+      padding: 20px; color: white; background: #0e1117; text-align: center;
     }
     #start-button {
       border: none; border-radius: 25px; padding: 16px 36px;
@@ -39,14 +53,19 @@
       z-index: 10000; padding: 8px 16px; border-radius: 20px;
       color: white; background: rgba(0,0,0,0.8); font-size: 14px; pointer-events: none;
     }
+    #sound-btn {
+      position: fixed; bottom: 85px; right: 15px; z-index: 10000;
+      display: none; border: none; border-radius: 20px; padding: 10px 18px;
+      background: #16a34a; color: white; font-weight: bold; cursor: pointer;
+    }
     #log {
-      position: fixed; top: 50px; left: 10px; right: 10px; z-index: 100000;
-      max-height: 120px; padding: 8px; overflow-y: auto; border-radius: 6px;
-      color: #00ff88; background: rgba(0, 0, 0, 0.9); direction: ltr;
-      font: 12px/1.4 monospace; text-align: left; pointer-events: none;
+      position: fixed; bottom: 10px; left: 10px; right: 10px; z-index: 10000;
+      max-height: 70px; padding: 6px 10px; overflow-y: auto; border-radius: 6px;
+      color: #00ff88; background: rgba(0, 0, 0, 0.85); direction: ltr;
+      font: 11px/1.4 monospace; text-align: left; pointer-events: none;
     }
     video.ar-content-video {
-      position: fixed; left: -10px; top: -10px; width: 2px; height: 2px; opacity: 0.01;
+      position: fixed; left: -100px; top: -100px; width: 1px; height: 1px; opacity: 0.001; pointer-events: none;
     }
   </style>
 
@@ -57,6 +76,8 @@
         this.video = document.querySelector(this.data.videoSelector);
         if (!this.video) return;
         this.texture = new THREE.VideoTexture(this.video);
+        this.texture.minFilter = THREE.LinearFilter;
+        this.texture.magFilter = THREE.LinearFilter;
         const geometry = new THREE.PlaneGeometry(1, 0.5625);
         const material = new THREE.MeshBasicMaterial({ map: this.texture, side: THREE.DoubleSide });
         this.mesh = new THREE.Mesh(geometry, material);
@@ -73,13 +94,14 @@
 <body>
 
   <div id="start-overlay">
-    <h2>تجربه واقعیت افزوده</h2>
-    <p>نسخه جدید (ورژن ۳)</p>
+    <h2>واقعیت افزوده</h2>
+    <p>برای شروع، روی دکمه زیر کلیک کنید</p>
     <button id="start-button" onclick="runAR()">شروع تجربه</button>
   </div>
 
   <div id="status">آماده برای شروع</div>
-  <div id="log">منتظر کلیک کاربر...</div>
+  <button id="sound-btn" onclick="toggleSound()">🔊 فعال‌سازی صدا</button>
+  <div id="log">منتظر لمس شروع...</div>
 
   <a-scene
     id="ar-scene"
@@ -87,17 +109,45 @@
     mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: false; uiLoading: no; uiScanning: no;"
     vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false"
+    renderer="alpha: true; antialias: true;"
   >
     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
     <a-entity id="targets-root"></a-entity>
   </a-scene>
 
   <script>
+    let isMuted = true;
+    const loadedVideos = [];
+
     function printLog(msg) {
       const logEl = document.getElementById('log');
       logEl.innerText += '\n> ' + msg;
       logEl.scrollTop = logEl.scrollHeight;
       console.log(msg);
+    }
+
+    /* پیدا کردن و نمایش اجباری المان وب‌کم */
+    function forceCameraFeed() {
+      const allVideos = Array.from(document.querySelectorAll('video'));
+      const camVideo = allVideos.find(v => v.srcObject || (!v.classList.contains('ar-content-video') && v.id !== 'ar-content-video'));
+
+      if (camVideo) {
+        camVideo.classList.add('ar-camera-feed');
+        camVideo.setAttribute('playsinline', '');
+        camVideo.setAttribute('webkit-playsinline', '');
+        camVideo.muted = true;
+        camVideo.play().catch(e => console.log('cam play err:', e));
+        printLog('فید دوربین در تصویر قرار گرفت');
+        return true;
+      }
+      return false;
+    }
+
+    function toggleSound() {
+      isMuted = !isMuted;
+      const soundBtn = document.getElementById('sound-btn');
+      soundBtn.innerText = isMuted ? '🔊 فعال‌سازی صدا' : '🔈 قطع صدا';
+      loadedVideos.forEach(v => { v.muted = isMuted; });
     }
 
     async function runAR() {
@@ -106,18 +156,17 @@
       const status = document.getElementById('status');
       
       btn.disabled = true;
-      btn.innerText = 'در حال پردازش...';
-      printLog('دکمه لمس شد.');
+      btn.innerText = 'در حال راه‌اندازی...';
+      printLog('اجرای برنامه شروع شد');
 
       try {
         const scene = document.getElementById('ar-scene');
-        
-        printLog('در حال گرفتن تنظیمات config.json...');
+
+        // ۱. خواندن کانفیگ
         const res = await fetch('./config.json?v=' + Date.now());
         const config = await res.json();
-        printLog('فایل config دریافت شد.');
 
-        // ساخت ویدیوها
+        // ۲. اتصال ویدیوهای ترگت
         if (config.videos && config.videos.length > 0) {
           config.videos.forEach((item, index) => {
             const targetIdx = item[0];
@@ -133,7 +182,9 @@
             v.playsInline = true;
             v.setAttribute('playsinline', '');
             v.setAttribute('webkit-playsinline', '');
+            v.crossOrigin = 'anonymous';
             document.body.appendChild(v);
+            loadedVideos.push(v);
 
             const target = document.createElement('a-entity');
             target.setAttribute('mindar-image-target', 'targetIndex: ' + targetIdx);
@@ -141,35 +192,44 @@
             const plane = document.createElement('a-entity');
             plane.setAttribute('video-texture-plane', 'videoSelector: #' + vId);
             plane.setAttribute('scale', item[2] || '1 1 1');
+            if (item[3]) plane.setAttribute('position', item[3]);
             
             target.appendChild(plane);
             document.getElementById('targets-root').appendChild(target);
 
             target.addEventListener('targetFound', () => {
-              status.innerText = 'تصویر پیدا شد!';
+              status.innerText = 'تصویر شناسایی شد!';
+              document.getElementById('sound-btn').style.display = 'block';
               printLog('Target Found: ' + targetIdx);
               v.play().catch(e => printLog('Play Error: ' + e.message));
             });
 
             target.addEventListener('targetLost', () => {
-              status.innerText = 'دوربین را روی تصویر بگیرید';
+              status.innerText = 'تصویر را مقابل دوربین بگیرید';
               v.pause();
             });
           });
         }
 
-        printLog('در حال فراخوانی سیستم دوربین...');
+        // ۳. استارت سیستم
         const mindarSystem = scene.systems['mindar-image-system'];
-        if (!mindarSystem) {
-          throw new Error('سیستم MindAR بارگذاری نشده است.');
-        }
+        if (!mindarSystem) throw new Error('MindAR در دسترس نیست');
 
-        printLog('شروع استارت دوربین...');
+        printLog('در حال دریافت دسترسی دوربین...');
         await mindarSystem.start();
 
-        printLog('دوربین فعال شد!');
         overlay.style.display = 'none';
-        status.innerText = 'دوربین را روی تصویر بگیرید';
+        status.innerText = 'تصویر را مقابل دوربین بگیرید';
+        printLog('دوربین روشن شد');
+
+        // اطمینان از قرارگیری ویدیو در لایه مناسب
+        let tries = 0;
+        const checkTimer = setInterval(() => {
+          tries++;
+          if (forceCameraFeed() || tries > 10) {
+            clearInterval(checkTimer);
+          }
+        }, 300);
 
       } catch (err) {
         printLog('خطا: ' + err.message);
