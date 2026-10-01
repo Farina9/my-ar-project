@@ -127,6 +127,44 @@
       cursor: pointer;
     }
   </style>
+
+  <script>
+    // کامپوننت اختصاصی Three.js برای ساخت پلین و رندر پیوسته فریم‌های ویدیو
+    AFRAME.registerComponent('video-mesh-plane', {
+      schema: {
+        videoSelector: { type: 'string' },
+        width: { type: 'number', default: 1 },
+        height: { type: 'number', default: 0.5625 }
+      },
+      init: function () {
+        const videoEl = document.querySelector(this.data.videoSelector);
+        if (!videoEl) {
+          console.error('Video element not found:', this.data.videoSelector);
+          return;
+        }
+
+        this.video = videoEl;
+        this.texture = new THREE.VideoTexture(this.video);
+        this.texture.minFilter = THREE.LinearFilter;
+        this.texture.magFilter = THREE.LinearFilter;
+        this.texture.format = THREE.RGBAFormat;
+
+        const geometry = new THREE.PlaneGeometry(this.data.width, this.data.height);
+        const material = new THREE.MeshBasicMaterial({
+          map: this.texture,
+          side: THREE.DoubleSide
+        });
+
+        this.mesh = new THREE.Mesh(geometry, material);
+        this.el.setObject3D('mesh', this.mesh);
+      },
+      tick: function () {
+        if (this.video && this.video.readyState >= this.video.HAVE_CURRENT_DATA && this.texture) {
+          this.texture.needsUpdate = true;
+        }
+      }
+    });
+  </script>
 </head>
 
 <body>
@@ -241,7 +279,7 @@
         log('Loading config...');
         const config = await loadConfig();
 
-        // 1. مدل‌های سه‌بعدی
+        // 1. بارگذاری مدل‌های سه‌بعدی
         if (Array.isArray(config.models)) {
           config.models.forEach((item) => {
             const [index, path, scale, position] = item;
@@ -261,12 +299,14 @@
           });
         }
 
-        // 2. ویدیوها (رندر مستقیم با Three.js VideoTexture)
+        // 2. بارگذاری ویدیوها روی آبجکت Plane سه‌بعدی سفارشی
         if (Array.isArray(config.videos)) {
           config.videos.forEach((item, i) => {
             const [index, path, scaleStr, posStr] = item;
+            const videoId = 'ar-video-node-' + i;
 
             const video = document.createElement('video');
+            video.id = videoId;
             video.dataset.arVideo = "true";
             video.src = path;
             video.loop = true;
@@ -276,44 +316,21 @@
             video.setAttribute('webkit-playsinline', '');
             video.crossOrigin = 'anonymous';
             video.preload = 'auto';
+            video.style.display = 'none';
+            document.body.appendChild(video);
 
             const anchor = document.createElement('a-entity');
             anchor.setAttribute('mindar-image-target', `targetIndex: ${index}`);
 
             const planeEntity = document.createElement('a-entity');
+            planeEntity.setAttribute('video-mesh-plane', `videoSelector: #${videoId}; width: 1; height: 0.5625;`);
+            planeEntity.setAttribute('scale', scaleStr || '1 1 1');
+            planeEntity.setAttribute('position', posStr || '0 0 0');
+
             anchor.appendChild(planeEntity);
             root.appendChild(anchor);
 
-            let texture = null;
-            let mesh = null;
-
-            planeEntity.addEventListener('loaded', () => {
-              texture = new THREE.VideoTexture(video);
-              texture.minFilter = THREE.LinearFilter;
-              texture.magFilter = THREE.LinearFilter;
-              texture.format = THREE.RGBAFormat;
-
-              const geometry = new THREE.PlaneGeometry(1, 0.5625);
-              const material = new THREE.MeshBasicMaterial({
-                map: texture,
-                side: THREE.DoubleSide
-              });
-
-              mesh = new THREE.Mesh(geometry, material);
-              
-              if (scaleStr) {
-                const s = scaleStr.split(' ').map(Number);
-                if (s.length === 3) mesh.scale.set(s[0], s[1], s[2]);
-              }
-              if (posStr) {
-                const p = posStr.split(' ').map(Number);
-                if (p.length === 3) mesh.position.set(p[0], p[1], p[2]);
-              }
-
-              planeEntity.setObject3D('mesh', mesh);
-            });
-
-            const videoRecord = { index, video, anchor };
+            const videoRecord = { index, video };
             activeVideos.push(videoRecord);
 
             anchor.addEventListener('targetFound', async () => {
@@ -326,7 +343,7 @@
                 await video.play();
                 log('Video playing...');
               } catch (err) {
-                log('Video play error: ' + err.message);
+                log('Play error: ' + err.message);
               }
             });
 
@@ -338,7 +355,7 @@
           });
         }
 
-        // قفل‌گشایی پخش ویدیوها
+        // فعال‌سازی اولیه مجوز ویدیوها
         for (const item of activeVideos) {
           try {
             await item.video.play();
