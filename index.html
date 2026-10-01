@@ -6,22 +6,20 @@
     name="viewport"
     content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
   />
-
-  <title>تجربه واقعیت افزوده</title>
+  <title>واقعیت افزوده - MindAR</title>
 
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
-    html,
-    body {
+    html, body {
       margin: 0;
       padding: 0;
       width: 100%;
       height: 100%;
       overflow: hidden;
       background: #000;
-      font-family: Arial, Tahoma, sans-serif;
+      font-family: Tahoma, Arial, sans-serif;
     }
 
     a-scene {
@@ -43,8 +41,8 @@
     video[data-mindar-video] {
       position: fixed !important;
       inset: 0 !important;
-      width: 100% !important;
-      height: 100% !important;
+      width: 100vw !important;
+      height: 100vh !important;
       object-fit: cover !important;
       z-index: 0 !important;
     }
@@ -55,30 +53,36 @@
       left: 50%;
       transform: translateX(-50%);
       z-index: 1000;
-      min-width: 190px;
+      min-width: 180px;
       padding: 10px 18px;
       color: #fff;
-      background: rgba(0, 0, 0, 0.68);
+      background: rgba(0, 0, 0, 0.7);
       border-radius: 22px;
       text-align: center;
-      font-size: 16px;
-      white-space: nowrap;
+      font-size: 15px;
       pointer-events: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
 
     #sound-btn {
       position: fixed;
       right: 16px;
-      bottom: 110px;
+      bottom: 95px;
       z-index: 1100;
       display: none;
-      padding: 12px 18px;
+      padding: 12px 20px;
       border: 0;
       border-radius: 24px;
       color: #fff;
       background: #2563eb;
-      font-size: 15px;
+      font-size: 14px;
+      font-weight: bold;
       cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+
+    #sound-btn.unmuted {
+      background: #16a34a;
     }
 
     #log {
@@ -87,15 +91,16 @@
       right: 10px;
       bottom: 10px;
       z-index: 1000;
-      height: 78px;
+      height: 75px;
       box-sizing: border-box;
       padding: 6px;
       overflow-y: auto;
       direction: ltr;
       color: #00ff88;
-      background: rgba(0, 0, 0, 0.78);
-      font: 11px/1.4 monospace;
+      background: rgba(0, 0, 0, 0.8);
+      font: 11px/1.3 monospace;
       text-align: left;
+      border-radius: 6px;
     }
 
     #start-screen {
@@ -106,45 +111,39 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 18px;
+      gap: 16px;
       padding: 24px;
-      box-sizing: border-box;
       color: #fff;
       background: #111;
       text-align: center;
     }
 
-    #start-screen p {
-      margin: 0;
-      font-size: 17px;
-    }
-
-    button {
+    #start-btn {
       border: 0;
       border-radius: 28px;
-      padding: 15px 24px;
+      padding: 14px 28px;
       color: #fff;
       background: #2563eb;
-      font-size: 17px;
+      font-size: 16px;
       font-weight: bold;
       cursor: pointer;
     }
 
-    button:active {
-      transform: scale(0.98);
+    #start-btn:active {
+      transform: scale(0.97);
     }
   </style>
 </head>
 
 <body>
   <div id="start-screen">
-    <p id="start-msg">برای شروع، دسترسی دوربین را تأیید کنید</p>
+    <p id="start-msg">برای شروع، دسترسی به دوربین و صدا را تأیید کنید</p>
     <button id="start-btn">شروع تجربه واقعیت افزوده</button>
   </div>
 
-  <div id="topbar">در انتظار دوربین...</div>
+  <div id="topbar">در انتظار بارگذاری...</div>
 
-  <button id="sound-btn">فعال‌کردن صدا</button>
+  <button id="sound-btn">🔊 فعال‌سازی صدا</button>
 
   <div id="log"></div>
 
@@ -163,11 +162,7 @@
   >
     <a-assets id="assets-container"></a-assets>
 
-    <a-camera
-      position="0 0 0"
-      look-controls="enabled: false"
-      wasd-controls="enabled: false"
-    ></a-camera>
+    <a-camera position="0 0 0" look-controls="enabled: false" wasd-controls="enabled: false"></a-camera>
 
     <a-entity id="main-root"></a-entity>
   </a-scene>
@@ -182,7 +177,8 @@
     const startMsg = document.getElementById('start-msg');
     const startBtn = document.getElementById('start-btn');
 
-    const videoItems = [];
+    const videoElements = [];
+    let isUserUnmuted = false;
 
     function log(message) {
       logBox.textContent += message + '\n';
@@ -206,165 +202,165 @@
       video.style.zIndex = '0';
     }
 
-    function findAndFixCameraVideo() {
+    function fixCameraDOM() {
       const allVideos = document.querySelectorAll('video');
-      allVideos.forEach((video) => {
-        if (video.srcObject && !video.id.startsWith('ar-content-video-')) {
-          markCameraVideo(video);
+      allVideos.forEach((v) => {
+        if (v.srcObject && !v.id.startsWith('video-asset-')) {
+          markCameraVideo(v);
         }
       });
     }
 
-    function startCameraVideoWatcher() {
-      findAndFixCameraVideo();
-      const observer = new MutationObserver(() => {
-        findAndFixCameraVideo();
-      });
+    function startCameraWatcher() {
+      fixCameraDOM();
+      const observer = new MutationObserver(fixCameraDOM);
       observer.observe(document.body, { childList: true, subtree: true });
-      const interval = setInterval(findAndFixCameraVideo, 500);
-      setTimeout(() => clearInterval(interval), 20000);
-    }
-
-    function createVideoTexture(video) {
-      const texture = new THREE.VideoTexture(video);
-      texture.minFilter = THREE.LinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-      texture.format = THREE.RGBAFormat;
-      texture.generateMipmaps = false;
-      texture.needsUpdate = true;
-      return texture;
-    }
-
-    function createVideoPlane(video, scale, position) {
-      const plane = document.createElement('a-plane');
-      plane.setAttribute('width', '1');
-      plane.setAttribute('height', '0.5625');
-      plane.setAttribute('scale', scale || '1 1 1');
-      plane.setAttribute('position', position || '0 0 0');
-
-      plane.addEventListener('loaded', () => {
-        const mesh = plane.getObject3D('mesh');
-        if (!mesh) return;
-
-        const texture = createVideoTexture(video);
-        mesh.material = new THREE.MeshBasicMaterial({
-          map: texture,
-          side: THREE.DoubleSide,
-          transparent: false,
-          toneMapped: false
-        });
-        mesh.material.needsUpdate = true;
-        log('Video texture attached.');
-      });
-
-      return plane;
+      const interval = setInterval(fixCameraDOM, 500);
+      setTimeout(() => clearInterval(interval), 15000);
     }
 
     async function loadConfig() {
       const response = await fetch('./config.json?v=' + Date.now());
-      if (!response.ok) {
-        throw new Error('config.json HTTP ' + response.status);
-      }
+      if (!response.ok) throw new Error('config.json HTTP ' + response.status);
       return await response.json();
     }
 
+    function updateSoundButtonUI() {
+      if (isUserUnmuted) {
+        soundButton.textContent = '🔈 قطع صدا';
+        soundButton.classList.add('unmuted');
+      } else {
+        soundButton.textContent = '🔊 فعال‌سازی صدا';
+        soundButton.classList.remove('unmuted');
+      }
+    }
+
+    soundButton.addEventListener('click', () => {
+      isUserUnmuted = !isUserUnmuted;
+      updateSoundButtonUI();
+
+      videoElements.forEach((video) => {
+        video.muted = !isUserUnmuted;
+      });
+      log('Sound state changed: ' + (isUserUnmuted ? 'Unmuted' : 'Muted'));
+    });
+
     async function startAR() {
       try {
-        log('Loading config.json...');
+        log('Loading configuration...');
         const config = await loadConfig();
 
+        // 1. بارگذاری مدل‌ها
         if (Array.isArray(config.models)) {
           config.models.forEach((item) => {
             const [index, path, scale, position] = item;
             const anchor = document.createElement('a-entity');
-            anchor.setAttribute('mindar-image-target', 'targetIndex: ' + index);
+            anchor.setAttribute('mindar-image-target', `targetIndex: ${index}`);
+
             const model = document.createElement('a-gltf-model');
             model.setAttribute('src', path);
             model.setAttribute('scale', scale || '1 1 1');
             model.setAttribute('position', position || '0 0 0');
+
             anchor.appendChild(model);
             root.appendChild(anchor);
-            
-            anchor.addEventListener('targetFound', () => setStatus('مدل شناسایی شد'));
+
+            anchor.addEventListener('targetFound', () => setStatus('مدل ۳بعدی شناسایی شد'));
             anchor.addEventListener('targetLost', () => setStatus('در انتظار تصویر...'));
           });
         }
 
+        // 2. بارگذاری ویدیوها
         if (Array.isArray(config.videos)) {
           config.videos.forEach((item, i) => {
             const [index, path, scale, position] = item;
-            const anchor = document.createElement('a-entity');
-            anchor.setAttribute('mindar-image-target', 'targetIndex: ' + index);
+            const videoId = 'video-asset-' + i;
 
             const video = document.createElement('video');
-            video.id = 'ar-content-video-' + i;
+            video.id = videoId;
             video.src = path;
             video.loop = true;
             video.muted = true;
             video.playsInline = true;
-            video.crossOrigin = 'anonymous';
+            video.setAttribute('playsinline', '');
+            video.setAttribute('webkit-playsinline', '');
+            video.setAttribute('crossorigin', 'anonymous');
             video.preload = 'auto';
 
             assets.appendChild(video);
+            videoElements.push(video);
 
-            const videoTexture = createVideoTexture(video);
-            const plane = createVideoPlane(video, scale, position);
+            const anchor = document.createElement('a-entity');
+            anchor.setAttribute('mindar-image-target', `targetIndex: ${index}`);
+
+            const plane = document.createElement('a-plane');
+            plane.setAttribute('material', `src: #${videoId}; shader: flat; side: double; transparent: false;`);
+            plane.setAttribute('width', '1');
+            plane.setAttribute('height', '0.5625');
+            plane.setAttribute('scale', scale || '1 1 1');
+            plane.setAttribute('position', position || '0 0 0');
 
             anchor.appendChild(plane);
             root.appendChild(anchor);
 
-            const videoItem = { index, video, videoTexture, anchor };
-            videoItems.push(videoItem);
-
             anchor.addEventListener('targetFound', async () => {
               setStatus('ویدیو شناسایی شد');
-              video.muted = true;
-              await video.play().catch(e => log('Play err: ' + e.message));
+              log('Target ' + index + ' found');
               soundButton.style.display = 'block';
+
+              video.muted = !isUserUnmuted;
+              try {
+                await video.play();
+                log('Video playing smoothly.');
+              } catch (err) {
+                log('Play error: ' + err.message);
+              }
             });
 
             anchor.addEventListener('targetLost', () => {
               video.pause();
               setStatus('در انتظار تصویر...');
+              log('Target ' + index + ' lost');
             });
           });
         }
 
-        // اگر همه چیز درست لود شد، صفحه شروع را بردار
+        // فعال‌سازی با یک بار پخش و توقف همه ویدیوها داخل رویداد کاربر
+        for (const v of videoElements) {
+          try {
+            await v.play();
+            v.pause();
+            v.currentTime = 0;
+          } catch (e) {
+            // هندل خودکار
+          }
+        }
+
         startScreen.remove();
 
         const scene = document.querySelector('a-scene');
         const mindarSystem = scene.systems['mindar-image-system'];
-        if (!mindarSystem) throw new Error('MindAR system not found');
+        if (!mindarSystem) throw new Error('MindAR system is not available.');
 
         scene.addEventListener('arReady', () => {
-          setStatus('دوربین آماده است');
-          startCameraVideoWatcher();
+          setStatus('دوربین فعال شد - تصویر را روبروی دوربین بگیرید');
+          startCameraWatcher();
         });
 
         mindarSystem.start();
-        startCameraVideoWatcher();
+        startCameraWatcher();
 
-      } catch (error) {
-        setStatus('خطا در بارگذاری');
-        log('Error: ' + error.message);
-        startMsg.textContent = 'خطا: ' + error.message;
+      } catch (err) {
+        setStatus('خطا در اجرا');
+        log('Error: ' + err.message);
+        startMsg.textContent = 'خطا: ' + err.message;
         startBtn.style.display = 'block';
       }
     }
 
-    soundButton.addEventListener('click', async () => {
-      for (const item of videoItems) {
-        item.video.muted = false;
-        await item.video.play().catch(e => log('Sound err: ' + e.message));
-      }
-      soundButton.textContent = 'صدا فعال است';
-      soundButton.disabled = true;
-    });
-
     startBtn.addEventListener('click', () => {
       startBtn.style.display = 'none';
-      startMsg.textContent = 'در حال بارگذاری فایل‌ها...';
+      startMsg.textContent = 'در حال راه‌اندازی و باز کردن دوربین...';
       startAR();
     });
   </script>
