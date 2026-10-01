@@ -1,134 +1,57 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>AR Experience</title>
-  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
-  <style>
-    html, body {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: #000;
-  }
-  a-scene {
-    width: 100%;
-    height: 100%;
-  }
-  #msg {
-    position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 999;
-    background: rgba(0,0,0,0.8);
-    color: #fff;
-    padding: 10px 20px;
-    border-radius: 25px;
-    font-size: 13px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-  }
-  #soundBtn {
-    position: fixed;
-    bottom: 30px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 999;
-    background: #2563eb;
-    color: #fff;
-    border: none;
-    padding: 12px 24px;
-    border-radius: 25px;
-    font-weight: bold;
-    display: none;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-  }
-  </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        #msg { position: fixed; top: 10px; width: 100%; text-align: center; z-index: 1000; color: white; font-family: sans-serif; background: rgba(0,0,0,0.5); padding: 10px 0; }
+        #error-log { position: fixed; bottom: 10px; left: 10px; color: red; font-size: 10px; z-index: 2000; background: white; }
+    </style>
 </head>
 <body>
-  <div id="msg">دوربین را به سمت تصویر بگیرید...</div>
-  <button id="soundBtn">🔊 پخش صدا</button>
+    <div id="msg">در حال بارگذاری... دوربین را به سمت تصویر بگیرید</div>
+    <div id="error-log"></div>
 
-  <a-scene mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true;" embedded color-space="sRGB" renderer="colorManagement: true" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
-    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-    <a-entity id="root"></a-entity>
-  </a-scene>
+    <a-scene mindar-image="imageTargetSrc: ./assets/targets.mind;" embedded color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights: true" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+        <a-entity id="root"></a-entity>
+    </a-scene>
 
-  <script>
-    AFRAME.registerComponent('interactive-model', {
-      schema: { autoRotate: { type: 'boolean', default: false } },
-      init: function () {
-        let isDragging = false, prev = { x: 0, y: 0 };
-        window.addEventListener('touchstart', (e) => { if(e.touches.length===1){ isDragging = true; prev = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }});
-        window.addEventListener('touchmove', (e) => {
-          if (!isDragging || e.touches.length !== 1) return;
-          const dx = e.touches[0].clientX - prev.x, dy = e.touches[0].clientY - prev.y;
-          const rot = this.el.getAttribute('rotation');
-          this.el.setAttribute('rotation', { x: rot.x + dy * 0.5, y: rot.y + dx * 0.5, z: rot.z });
-          prev = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-        });
-        window.addEventListener('touchend', () => isDragging = false);
-        this.isDragging = () => isDragging;
-      },
-      tick: function () {
-        if (this.data.autoRotate && !this.isDragging()) {
-          const rot = this.el.getAttribute('rotation');
-          this.el.setAttribute('rotation', { x: rot.x, y: rot.y + 0.8, z: rot.z });
-        }
-      }
-    });
+    <script>
+        const log = (txt) => { document.getElementById('error-log').innerHTML += txt + '<br>'; };
+        
+        fetch('./config.json')
+            .then(response => {
+                if (!response.ok) throw new Error('فایل config.json پیدا نشد!');
+                return response.json();
+            })
+            .then(CONFIG => {
+                const root = document.getElementById('root');
+                document.getElementById('msg').innerText = "آماده! دوربین را به سمت تصویر بگیرید";
 
-    fetch('./config.json')
-      .then(res => res.json())
-      .then(CONFIG => {
-        const root = document.getElementById('root');
-        const soundBtn = document.getElementById('soundBtn');
-        let currentAudio = null, currentVideo = null;
+                (CONFIG.models || []).forEach(([idx, path, scale, pos, autoRot]) => {
+                    const anchor = document.createElement('a-entity');
+                    anchor.setAttribute('mindar-image-target', `targetIndex: ${idx}`);
+                    
+                    const model = document.createElement('a-gltf-model');
+                    model.setAttribute('src', path);
+                    model.setAttribute('scale', scale);
+                    model.setAttribute('position', pos);
+                    
+                    if(autoRot) {
+                        model.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 5000; easing: linear');
+                    }
 
-        function getAnchor(index) {
-          let anchor = document.getElementById(`target-${index}`);
-          if (!anchor) {
-            anchor = document.createElement('a-entity');
-            anchor.setAttribute('id', `target-${index}`);
-            anchor.setAttribute('mindar-image-target', `targetIndex: ${index}`);
-            root.appendChild(anchor);
-          }
-          return anchor;
-        }
-
-        (CONFIG.models || []).forEach(([idx, path, scale, pos, autoRot]) => {
-          const a = getAnchor(idx);
-          const m = document.createElement('a-gltf-model');
-          m.setAttribute('src', path);
-          m.setAttribute('scale', scale);
-          m.setAttribute('position', pos);
-          m.setAttribute('interactive-model', `autoRotate: ${autoRot}`);
-          a.appendChild(m);
-        });
-
-        (CONFIG.videos || []).forEach(([idx, path, scale, pos]) => {
-          const a = getAnchor(idx);
-          const v = document.createElement('video');
-          v.src = path; v.crossOrigin = 'anonymous'; v.playsInline = true; v.loop = true;
-          const mesh = document.createElement('a-video');
-          mesh.setAttribute('src', v);
-          mesh.setAttribute('scale', scale);
-          mesh.setAttribute('position', pos);
-          a.appendChild(mesh);
-          a.addEventListener('targetFound', () => { currentVideo = v; v.play().catch(() => soundBtn.style.display = 'block'); });
-          a.addEventListener('targetLost', () => { v.pause(); soundBtn.style.display = 'none'; });
-        });
-
-        soundBtn.addEventListener('click', () => {
-          if (currentVideo) currentVideo.play();
-          if (currentAudio) currentAudio.play();
-          soundBtn.style.display = 'none';
-        });
-      });
-  </script>
+                    anchor.appendChild(model);
+                    root.appendChild(anchor);
+                    
+                    // تست لود شدن مدل
+                    model.addEventListener('model-error', () => log("خطا در بارگذاری مدل: " + path));
+                });
+            })
+            .catch(err => log("خطای کلی: " + err.message));
+    </script>
 </body>
 </html>
