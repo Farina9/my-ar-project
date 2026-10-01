@@ -1,239 +1,56 @@
-<!doctype html>
-<html lang="fa">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>AR Experience - Dual Mode</title>
-  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #000;
-    }
+// ===== ویدیوها =====
+if (cfg.videos && cfg.videos.length) {
+  cfg.videos.forEach((v, i) => {
+    const [idx, path, scale, pos] = v;
 
-    a-scene {
-      position: fixed !important;
-      inset: 0 !important;
-      width: 100% !important;
-      height: 100% !important;
-    }
+    const anchor = document.createElement('a-entity');
+    anchor.setAttribute('mindar-image-target', `targetIndex: ${idx}`);
 
-    #topbar {
-      position: fixed;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 1000;
-      padding: 10px 20px;
-      color: white;
-      background: rgba(0,0,0,.65);
-      border-radius: 20px;
-      font-family: sans-serif;
-      white-space: nowrap;
-      pointer-events: none;
-    }
+    const videoId = `vid-${i}`;
+    const videoEl = document.createElement('video');
 
-    #log {
-      position: fixed;
-      bottom: 10px;
-      left: 10px;
-      right: 10px;
-      height: 80px;
-      z-index: 1000;
-      overflow: auto;
-      padding: 5px;
-      box-sizing: border-box;
-      color: #0f6;
-      background: rgba(0,0,0,.8);
-      font: 10px monospace;
-    }
+    videoEl.id = videoId;
+    videoEl.src = path;
+    videoEl.loop = true;
+    videoEl.muted = true; // برای شروع خودکار ویدیو
+    videoEl.playsInline = true;
+    videoEl.setAttribute('playsinline', '');
+    videoEl.setAttribute('webkit-playsinline', '');
+    videoEl.preload = 'auto';
+    videoEl.crossOrigin = 'anonymous';
 
-    #start-screen {
-      position: fixed;
-      inset: 0;
-      z-index: 2000;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 15px;
-      background: #111;
-      color: white;
-      font-family: sans-serif;
-    }
+    $assets.appendChild(videoEl);
 
-    button {
-      padding: 15px 30px;
-      font-size: 18px;
-      cursor: pointer;
-      border-radius: 30px;
-      border: none;
-      background: #2563eb;
-      color: white;
-      font-weight: bold;
-    }
-  </style>
-</head>
-<body>
+    const plane = document.createElement('a-plane');
+    plane.setAttribute('width', '1');
+    plane.setAttribute('height', '0.5625');
+    plane.setAttribute('scale', scale || '1 1 1');
+    plane.setAttribute('position', pos || '0 0 0');
+    plane.setAttribute(
+      'material',
+      'shader: flat; side: double; src: #' + videoId
+    );
 
-  <div id="start-screen">
-    <div>برای شروع، دسترسی دوربین را تأیید کنید</div>
-    <button id="start-btn">شروع تجربه واقعیت افزوده</button>
-  </div>
+    anchor.appendChild(plane);
+    $root.appendChild(anchor);
 
-  <div id="topbar">در انتظار دوربین...</div>
-  <div id="log"></div>
+    anchor.addEventListener('targetFound', async () => {
+      $top.innerText = 'ویدیو شناسایی شد';
+      log('Video target found: ' + idx);
 
-  <a-scene
-    mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: false; uiLoading: no; maxTrack: 2;"
-    embedded
-    vr-mode-ui="enabled: false"
-    device-orientation-permission-ui="enabled: false">
-
-    <a-assets id="assets-container"></a-assets>
-    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-    <a-entity id="main-root"></a-entity>
-  </a-scene>
-
-  <script>
-    const $log = document.getElementById('log');
-    const $top = document.getElementById('topbar');
-    const $root = document.getElementById('main-root');
-    const $assets = document.getElementById('assets-container');
-
-    function log(m) {
-      $log.innerText += m + "\n";
-      $log.scrollTop = $log.scrollHeight;
-      console.log(m);
-    }
-
-    // ===== رفع مشکل تصویر نصفه: تمام‌صفحه کردن ویدئوی دوربین =====
-    function fixCameraVideo() {
-      const videos = document.querySelectorAll('video');
-      let found = false;
-      videos.forEach((v) => {
-        // ویدئوی دوربین، stream زنده دارد؛ ویدئوی محتوا src فایلی دارد
-        if (v.srcObject) {
-          v.style.position = 'fixed';
-          v.style.top = '0';
-          v.style.left = '0';
-          v.style.width = '100%';
-          v.style.height = '100%';
-          v.style.objectFit = 'cover';
-          v.style.zIndex = '0';
-          v.style.transform = 'none';
-          found = true;
-        }
-      });
-      if (found) {
-        log("Camera video fixed (fullscreen).");
-        $top.innerText = "دوربین آماده است";
-      }
-      return found;
-    }
-
-    function keepFixingCamera(maxTries = 30) {
-      let tries = 0;
-      const t = setInterval(() => {
-        tries++;
-        if (fixCameraVideo() || tries >= maxTries) clearInterval(t);
-      }, 500);
-    }
-
-    async function startAR() {
       try {
-        log("Loading config.json...");
-        const res = await fetch('./config.json?v=' + Date.now());
-        const cfg = await res.json();
-
-        // ===== مدل‌های سه‌بعدی =====
-        if (cfg.models && cfg.models.length) {
-          cfg.models.forEach((m) => {
-            const [idx, path, scale, pos] = m;
-            const anchor = document.createElement('a-entity');
-            anchor.setAttribute('mindar-image-target', 'targetIndex: ' + idx);
-
-            const model = document.createElement('a-gltf-model');
-            model.setAttribute('src', path);
-            model.setAttribute('scale', scale || "1 1 1");
-            model.setAttribute('position', pos || "0 0 0");
-
-            anchor.appendChild(model);
-            $root.appendChild(anchor);
-
-            anchor.addEventListener('targetFound', () => {
-              $top.innerText = "مدل شناسایی شد ✔";
-              log("Model Found: " + idx);
-            });
-            anchor.addEventListener('targetLost', () => {
-              $top.innerText = "در انتظار دوربین...";
-            });
-            log("Model added on target " + idx);
-          });
-        }
-
-        // ===== ویدیوها =====
-        if (cfg.videos && cfg.videos.length) {
-          cfg.videos.forEach((v, i) => {
-            const [idx, path, scale, pos] = v;
-            const anchor = document.createElement('a-entity');
-            anchor.setAttribute('mindar-image-target', 'targetIndex: ' + idx);
-
-            const videoId = 'vid-' + i;
-            const videoEl = document.createElement('video');
-            videoEl.id = videoId;
-            videoEl.src = path;
-            videoEl.loop = true;
-            videoEl.muted = false;
-            videoEl.crossOrigin = "anonymous";
-            videoEl.setAttribute('playsinline', '');
-            videoEl.setAttribute('webkit-playsinline', '');
-            $assets.appendChild(videoEl);
-
-            const plane = document.createElement('a-plane');
-            plane.setAttribute('material', 'shader: flat; src: #' + videoId + '; transparent: false');
-            plane.setAttribute('width', '1');
-            plane.setAttribute('height', '0.5625');
-            plane.setAttribute('scale', scale || "1 1 1");
-            plane.setAttribute('position', pos || "0 0 0");
-
-            anchor.appendChild(plane);
-            $root.appendChild(anchor);
-
-            anchor.addEventListener('targetFound', () => {
-              $top.innerText = "ویدیو شناسایی شد ✔";
-              log("Video Found: " + idx);
-              videoEl.play().catch(e => log("Play blocked: tap screen once"));
-            });
-            anchor.addEventListener('targetLost', () => {
-              videoEl.pause();
-              $top.innerText = "در انتظار دوربین...";
-            });
-            log("Video added on target " + idx);
-          });
-        }
-
-        // ===== شروع سیستم AR =====
-        const scene = document.querySelector('a-scene');
-        scene.systems['mindar-image-system'].start();
-        log("AR System Started.");
-
-        keepFixingCamera();
-
+        await videoEl.play();
+        log('Video playing: ' + path);
       } catch (e) {
-        log("Global Error: " + e.message);
+        log('Video play error: ' + e.message);
       }
-    }
-
-    document.getElementById('start-btn').addEventListener('click', () => {
-      document.getElementById('start-screen').remove();
-      startAR();
     });
-  </script>
-</body>
-</html>
+
+    anchor.addEventListener('targetLost', () => {
+      videoEl.pause();
+      log('Video target lost: ' + idx);
+    });
+
+    log('Video added on target ' + idx);
+  });
+}
